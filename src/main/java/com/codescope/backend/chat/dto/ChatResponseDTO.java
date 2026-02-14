@@ -1,0 +1,13 @@
+package com.codescope.backend.chat.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class ChatResponseDTO {
+    private ChatMessageDTO userMessage;
+    private ChatMessageDTO aiMessage;
+}

@@ -1,0 +1,71 @@
+spring:
+  profiles:
+    active: "@spring.profiles.active@"
+  application:
+    name: backend
+  main:
+    web-application-type: reactive
+  codec:
+    max-in-memory-size: 10MB # Increase buffer for large file uploads
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/codescope
+    redis:
+      host: localhost
+      port: 6379
+  datasource: # JPA Data Source (for ProjectRepository)
+    url: jdbc:h2:mem:codescope;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driverClassName: org.h2.Driver
+    username: sa
+    password: password
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update # Automatically create/update schema
+    show-sql: true # Show SQL in logs (optional)
+
+server:
+  port: 8080
+
+# Firebase Configuration
+firebase:
+  project-id: codescope-ai-code-reviewer
+  # Path to your service account key file (relative to resources folder)
+  service-account: firebase-service-account.json
+
+# Cloudinary Configuration
+cloudinary:
+  cloud-name: your_cloud_name
+  api-key: your_api_key
+  api-secret: your_api_secret
+
+# AI Service Configuration
+ai:
+  defaultModel: huggingface # Can be 'huggingface', 'openai', or 'ollama'
+  huggingface:
+    api:
+      url: https://api-inference.huggingface.co/models
+      key: your_hugging_face_api_key
+    default-model: google/flan-t5-base # Configurable default model for Hugging Face
+  openai:
+    api:
+      url: https://api.openai.com/v1/chat/completions
+      key: your_openai_api_key
+    token: ${OPENAI_API_KEY} # Environment variable for OpenAI API Key
+  ollama:
+    base-url: http://localhost:11434 # Ollama local instance URL
+    default-model: llama2 # Default model for Ollama
+
+# JWT Configuration
+file:
+  upload-dir: uploads # Default directory for uploaded files
+
+jwt:
+  secret: ${JWT_SECRET:your-jwt-secret-here-base64-encoded}
+  expiration: 3600000 # 1 hour in milliseconds
+
+logging:
+  level:
+    root: INFO
+    com.codescope.backend: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG # Log WebClient requests/responses

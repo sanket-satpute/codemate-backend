@@ -1,0 +1,10 @@
+spring:
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+logging:
+  level:
+    root: INFO
+    com.codescope.backend: INFO

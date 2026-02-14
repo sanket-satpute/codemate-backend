@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI Analysis Response Schema v1",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "description": "Name of the AI provider used for the analysis (Ollama, HuggingFace, OpenAI, Mock)."
+    },
+    "summary": {
+      "type": "string",
+      "description": "High-level summary of the code analysis."
+    },
+    "findings": {
+      "type": "array",
+      "description": "List of issues, suggestions, or insights identified by the AI.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Category of the finding (e.g., bug, optimization, style, logic)."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Detailed description or suggestion from AI."
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["LOW", "MEDIUM", "HIGH"],
+            "description": "Optional severity rating for the finding."
+          }
+        },
+        "required": ["type", "detail"]
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["RUNNING", "COMPLETED", "FAILED"],
+      "description": "Job status reflecting the progress of AI analysis."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional contextual data for debugging or analytics.",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time when analysis was completed."
+        },
+        "model": {
+          "type": "string",
+          "description": "Specific model name or version used for this analysis."
+        },
+        "tokenUsage": {
+          "type": "integer",
+          "description": "Approximate number of tokens processed (if available)."
+        }
+      }
+    }
+  },
+  "required": ["provider", "summary", "findings", "status"]
+}
