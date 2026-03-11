@@ -64,6 +64,8 @@ class ProjectServiceTest {
                 .createdAt(mockProject.getCreatedAt())
                 .updatedAt(mockProject.getUpdatedAt())
                 .build();
+
+        lenient().when(projectRepository.findByProjectId(anyString())).thenReturn(Mono.empty());
     }
 
     // CREATE PROJECT TEST

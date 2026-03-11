@@ -3,7 +3,6 @@ package com.codescope.backend.controller;
 import com.codescope.backend.dto.BaseResponse;
 import com.codescope.backend.dto.report.ReportDto;
 import com.codescope.backend.exception.ResourceNotFoundException;
-import com.codescope.backend.service.FirebaseService;
 import com.codescope.backend.service.ReportService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -17,11 +16,9 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class ExportController {
 
-    private final FirebaseService firebaseService;
     private final ReportService reportService;
 
-    public ExportController(FirebaseService firebaseService, ReportService reportService) {
-        this.firebaseService = firebaseService;
+    public ExportController(ReportService reportService) {
         this.reportService = reportService;
     }
 
@@ -29,7 +26,7 @@ public class ExportController {
     @PreAuthorize("isAuthenticated()")
     public Mono<ResponseEntity<BaseResponse<ReportDto>>> getReportByJobId(@PathVariable String jobId) {
         log.info("Fetching report for job ID: {}", jobId);
-        return firebaseService.getReportByProjectId(jobId)
+        return reportService.getReportByJobId(jobId)
                 .map(reportDto -> ResponseEntity.ok(BaseResponse.success(reportDto, "Report retrieved successfully")))
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("Report not found for job ID: " + jobId)))
                 .onErrorResume(e -> {

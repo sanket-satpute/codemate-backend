@@ -11,8 +11,8 @@ import java.time.LocalDateTime; // Use LocalDateTime instead of Instant
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChatMessageDto {
-    private String id; // Keep as String for Firebase document ID
-    private Long projectId; // Changed to Long to match ChatMessage model
+    private String id;
+    private String projectId;
     private ChatMessage.Sender sender; // Changed to enum to match ChatMessage model
     private String message;
     private LocalDateTime timestamp; // Changed to LocalDateTime to match ChatMessage model

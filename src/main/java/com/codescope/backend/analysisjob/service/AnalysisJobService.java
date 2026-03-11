@@ -12,38 +12,46 @@ import com.codescope.backend.project.repository.ProjectRepository;
 import com.codescope.backend.realtime.websocket.WebSocketEventPayload;
 import com.codescope.backend.realtime.websocket.WebSocketEventPublisher;
 import com.codescope.backend.realtime.websocket.WebSocketEventType;
+import com.codescope.backend.ai.AIProcessingService;
+import com.codescope.backend.model.Notification;
+import com.codescope.backend.repository.NotificationRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.scheduling.annotation.Async;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import reactor.core.publisher.Mono;
 import reactor.core.publisher.Flux;
-
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDateTime;
-import java.util.List;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AnalysisJobService {
 
     private final AnalysisJobRepository analysisJobRepository;
-    private final ProjectRepository projectRepository; // For project ownership validation
+    private final ProjectRepository projectRepository;
     private final WebSocketEventPublisher webSocketEventPublisher;
+    private final AIProcessingService aiProcessingService;
+    private final NotificationRepository notificationRepository;
+    private final ObjectMapper objectMapper;
 
     public Mono<AnalysisJobResponseDTO> startNewJob(String projectId, String jobType) {
-        return createJob(projectId, JobType.valueOf(jobType), "user");
+        return createJob(projectId, JobType.valueOf(jobType), "user", null);
     }
 
-    public Mono<AnalysisJobResponseDTO> createJob(String projectId, JobType jobType, String initiatedBy) {
+    public Mono<AnalysisJobResponseDTO> createJob(String projectId, JobType jobType, String initiatedBy, String userId) {
         return projectRepository.findByProjectId(projectId)
+                .switchIfEmpty(projectRepository.findById(projectId))
                 .switchIfEmpty(Mono.error(new JobNotFoundException("Project not found with ID: " + projectId)))
                 .flatMap(project -> {
                     AnalysisJob job = AnalysisJob.builder()
-                            .jobId(UUID.randomUUID().toString()) // Generate jobId
+                            .jobId(UUID.randomUUID().toString())
                             .projectId(projectId)
                             .jobType(jobType)
                             .status(JobStatus.PENDING)
@@ -52,65 +60,139 @@ public class AnalysisJobService {
                             .initiatedBy(initiatedBy)
                             .build();
 
-                    return Mono.fromCallable(() -> analysisJobRepository.save(job))
+                    return analysisJobRepository.save(job)
                             .map(savedJob -> {
                                 webSocketEventPublisher.publishToProject(projectId,
-                                        new WebSocketEventPayload(WebSocketEventType.JOB_QUEUED, projectId, Map.of("job", mapToAnalysisJobResponseDTO(savedJob), "jobId", savedJob.getJobId())));
-                                runAnalysisAsync(savedJob.getJobId());
+                                        new WebSocketEventPayload(WebSocketEventType.JOB_QUEUED, projectId,
+                                                Map.of("job", mapToAnalysisJobResponseDTO(savedJob), "jobId",
+                                                        savedJob.getJobId())));
+                                runAnalysisAsync(savedJob.getJobId(), project.getName(), userId)
+                                        .subscribeOn(Schedulers.boundedElastic())
+                                        .subscribe();
                                 return mapToAnalysisJobResponseDTO(savedJob);
                             });
                 });
     }
 
-    @Async
-    public void runAnalysisAsync(String jobId) {
-        // This is a placeholder for actual async analysis logic
-        // In a real scenario, this would involve calling external AI services,
-        // processing files, etc.
+    public Mono<Void> runAnalysisAsync(String jobId, String projectName, String userId) {
+        return analysisJobRepository.findByJobId(jobId)
+                .switchIfEmpty(Mono.error(new JobNotFoundException("Job not found: " + jobId)))
+                .flatMap(job -> updateJobStatus(jobId, JobStatus.IN_PROGRESS)
+                        .then(aiProcessingService.generateAIResult(job))
+                        .flatMap(aiResult -> saveJobResult(jobId, aiResult)
+                                .then(createAnalysisNotification(userId, projectName, aiResult, true)))
+                        .then(updateJobStatus(jobId, JobStatus.COMPLETED))
+                        .doOnSuccess(v -> log.info("Analysis job {} completed successfully", jobId)))
+                .onErrorResume(e -> {
+                    log.error("Analysis job {} failed: {}", jobId, e.getMessage(), e);
+                    return createAnalysisNotification(userId, projectName, null, false)
+                            .then(safeFailJob(jobId, "Analysis failed: " + e.getMessage()));
+                });
+    }
+
+    private Mono<Void> createAnalysisNotification(String userId, String projectName, String aiResult, boolean success) {
+        if (userId == null || userId.isBlank()) return Mono.empty();
+
+        String title;
+        String message;
+
+        if (success && aiResult != null) {
+            title = "Analysis Completed — " + (projectName != null ? projectName : "Project");
+            message = buildCompletionMessage(aiResult, projectName);
+        } else {
+            title = "Analysis Failed — " + (projectName != null ? projectName : "Project");
+            message = "Code analysis for " + (projectName != null ? projectName : "your project") + " failed. Please try again.";
+        }
+
+        Notification notification = Notification.builder()
+                .userId(userId)
+                .title(title)
+                .message(message)
+                .read(false)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return notificationRepository.save(notification)
+                .doOnNext(saved -> log.info("Analysis notification created for user {}", userId))
+                .onErrorResume(e -> {
+                    log.warn("Failed to create analysis notification: {}", e.getMessage());
+                    return Mono.empty();
+                })
+                .then();
+    }
+
+    private String buildCompletionMessage(String aiResult, String projectName) {
         try {
-            updateJobStatus(jobId, JobStatus.IN_PROGRESS);
-            // Simulate long-running task
-            Thread.sleep(5000);
-            saveJobResult(jobId, "Analysis completed successfully for job " + jobId);
-            updateJobStatus(jobId, JobStatus.COMPLETED);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            updateJobStatus(jobId, JobStatus.FAILED);
-            saveJobResult(jobId, "Analysis interrupted for job " + jobId + ": " + e.getMessage());
+            JsonNode root = objectMapper.readTree(aiResult);
+            String riskLevel = root.has("riskLevel") ? root.get("riskLevel").asText() : "UNKNOWN";
+            int issueCount = root.has("issues") && root.get("issues").isArray() ? root.get("issues").size() : 0;
+
+            int errors = 0, warnings = 0, infos = 0;
+            if (root.has("issues") && root.get("issues").isArray()) {
+                for (JsonNode issue : root.get("issues")) {
+                    String severity = issue.has("severity") ? issue.get("severity").asText().toLowerCase() : "";
+                    switch (severity) {
+                        case "error": errors++; break;
+                        case "warning": warnings++; break;
+                        default: infos++; break;
+                    }
+                }
+            }
+
+            String proj = projectName != null ? projectName : "Your project";
+            if (issueCount == 0) {
+                return proj + " passed analysis with no issues found. Risk Level: " + riskLevel + ". Great job!";
+            }
+            return proj + " analysis complete. Found " + issueCount + " findings: " +
+                    errors + " errors, " + warnings + " warnings, " + infos + " info. Risk Level: " + riskLevel + ".";
         } catch (Exception e) {
-            updateJobStatus(jobId, JobStatus.FAILED);
-            saveJobResult(jobId, "Analysis failed for job " + jobId + ": " + e.getMessage());
+            return "Analysis completed for " + (projectName != null ? projectName : "your project") + ".";
         }
     }
 
-    @Transactional
-    public void updateJobStatus(String jobId, JobStatus status) {
-        AnalysisJob job = analysisJobRepository.findByJobId(jobId)
-                .orElseThrow(() -> new JobNotFoundException("Job not found with ID: " + jobId));
-        job.setStatus(status);
-        job.setUpdatedAt(LocalDateTime.now());
-        AnalysisJob savedJob = analysisJobRepository.save(job);
-        WebSocketEventType eventType = getEventTypeForStatus(status);
-        if (eventType != null) {
-            webSocketEventPublisher.publishToProject(savedJob.getProjectId(),
-                    new WebSocketEventPayload(eventType, savedJob.getProjectId(), Map.of("job", mapToAnalysisJobResponseDTO(savedJob), "jobId", savedJob.getJobId())));
-        }
+    private Mono<Void> safeFailJob(String jobId, String message) {
+        return updateJobStatus(jobId, JobStatus.FAILED)
+                .onErrorResume(ignored -> Mono.empty())
+                .then(saveJobResult(jobId, message).onErrorResume(ignored -> Mono.empty()));
     }
 
-    @Transactional
-    public void saveJobResult(String jobId, String result) {
-        AnalysisJob job = analysisJobRepository.findByJobId(jobId)
-                .orElseThrow(() -> new JobNotFoundException("Job not found with ID: " + jobId));
-        job.setResult(result);
-        job.setUpdatedAt(LocalDateTime.now());
-        AnalysisJob savedJob = analysisJobRepository.save(job);
-        webSocketEventPublisher.publishToProject(savedJob.getProjectId(),
-                new WebSocketEventPayload(WebSocketEventType.JOB_RUNNING, savedJob.getProjectId(), Map.of("result", result, "jobId", savedJob.getJobId())));
+    public Mono<Void> updateJobStatus(String jobId, JobStatus status) {
+        return analysisJobRepository.findByJobId(jobId)
+                .switchIfEmpty(Mono.error(new JobNotFoundException("Job not found with ID: " + jobId)))
+                .flatMap(job -> {
+                    job.setStatus(status);
+                    job.setUpdatedAt(LocalDateTime.now());
+                    return analysisJobRepository.save(job);
+                })
+                .doOnNext(savedJob -> {
+                    WebSocketEventType eventType = getEventTypeForStatus(status);
+                    if (eventType != null) {
+                        webSocketEventPublisher.publishToProject(savedJob.getProjectId(),
+                                new WebSocketEventPayload(eventType, savedJob.getProjectId(), Map.of("job",
+                                        mapToAnalysisJobResponseDTO(savedJob), "jobId", savedJob.getJobId())));
+                    }
+                })
+                .then();
+    }
+
+    public Mono<Void> saveJobResult(String jobId, String result) {
+        return analysisJobRepository.findByJobId(jobId)
+                .switchIfEmpty(Mono.error(new JobNotFoundException("Job not found with ID: " + jobId)))
+                .flatMap(job -> {
+                    job.setResult(result);
+                    job.setUpdatedAt(LocalDateTime.now());
+                    return analysisJobRepository.save(job);
+                })
+                .doOnNext(savedJob -> webSocketEventPublisher.publishToProject(savedJob.getProjectId(),
+                        new WebSocketEventPayload(WebSocketEventType.JOB_RUNNING, savedJob.getProjectId(),
+                                Map.of("result", result, "jobId", savedJob.getJobId()))))
+                .then();
     }
 
     public Mono<JobStatusResponseDTO> getJobStatus(String jobId, String projectId, String userId) {
-        return Mono.fromCallable(() -> analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)
-                .orElseThrow(() -> new JobNotFoundException("Job not found with ID: " + jobId + " for project: " + projectId)))
+        return analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)
+                .switchIfEmpty(Mono.error(
+                        new JobNotFoundException("Job not found with ID: " + jobId + " for project: " + projectId)))
                 .map(job -> {
                     if (!job.getInitiatedBy().equals(userId)) {
                         throw new UnauthorizedJobAccessException("User is not authorized to access this job.");
@@ -120,9 +202,15 @@ public class AnalysisJobService {
     }
 
     public Flux<AnalysisJobResponseDTO> getProjectJobs(String projectId, String userId) {
-        return Flux.fromIterable(analysisJobRepository.findByProjectId(projectId))
+        return analysisJobRepository.findByProjectId(projectId)
                 .filter(job -> job.getInitiatedBy().equals(userId))
                 .map(this::mapToAnalysisJobResponseDTO);
+    }
+
+    public Mono<JobStatusResponseDTO> getJobStatus(String jobId) {
+        return analysisJobRepository.findByJobId(jobId)
+                .switchIfEmpty(Mono.error(new JobNotFoundException("Job not found with ID: " + jobId)))
+                .map(this::mapToJobStatusResponseDTO);
     }
 
     private AnalysisJobResponseDTO mapToAnalysisJobResponseDTO(AnalysisJob job) {
@@ -134,6 +222,7 @@ public class AnalysisJobService {
                 .createdAt(job.getCreatedAt())
                 .updatedAt(job.getUpdatedAt())
                 .result(job.getResult())
+                .model(job.getModel())
                 .build();
     }
 
@@ -158,7 +247,7 @@ public class AnalysisJobService {
             case FAILED:
                 return WebSocketEventType.JOB_FAILED;
             default:
-                return null;
+                throw new IllegalArgumentException("Unknown JobStatus: " + status);
         }
     }
 }

@@ -1,0 +1,32 @@
+spring:
+  main:
+    web-application-type: reactive
+  ai:
+    openai:
+      api-key: test-openai-key
+
+api:
+  github:
+    key: test-github-key
+  gemini:
+    key: test-gemini-key
+  groq:
+    key: test-groq-key
+
+app:
+  repositories:
+    enabled: false
+
+ai:
+  huggingface:
+    api:
+      url: https://api-inference.huggingface.co/models
+      key: test-hf-key
+  openai:
+    api:
+      url: https://api.openai.com/v1/chat/completions
+      key: test-openai-key
+    token: test-openai-key
+
+file:
+  upload-dir: uploads-test

@@ -3,6 +3,7 @@ package com.codescope.backend.service;
 import com.codescope.backend.dto.report.ReportDto;
 import com.codescope.backend.exception.ResourceNotFoundException;
 import com.codescope.backend.model.Report;
+import com.codescope.backend.repository.ReportRepository;
 import com.itextpdf.text.Document;
 import com.itextpdf.text.Font;
 import com.itextpdf.text.FontFactory;
@@ -15,45 +16,58 @@ import reactor.core.publisher.Mono;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @Slf4j
 public class ReportService {
 
-    private final FirebaseService firebaseService;
+    private final ReportRepository reportRepository;
 
-    public ReportService(FirebaseService firebaseService) {
-        this.firebaseService = firebaseService;
+    public ReportService(ReportRepository reportRepository) {
+        this.reportRepository = reportRepository;
     }
 
     /**
-     * ✅ 1️⃣ Save Report to Firebase
+     * Save Report to MongoDB.
      */
     public Mono<String> saveReport(Report report) {
-        if (report.getReportId() == null || report.getReportId().isEmpty()) {
-            report.setReportId(java.util.UUID.randomUUID().toString());
+        if (report.getReportId() == null || report.getReportId().isBlank()) {
+            report.setReportId(UUID.randomUUID().toString());
         }
-        return firebaseService.saveReport(report)
-                .thenReturn(report.getReportId())
-                .switchIfEmpty(Mono.error(new RuntimeException("Failed to save report to Firebase.")));
+        return reportRepository.save(report)
+                .map(Report::getReportId)
+                .switchIfEmpty(Mono.error(new RuntimeException("Failed to save report to database.")));
     }
 
     /**
-     * ✅ 2️⃣ Fetch all reports for a project
+     * Fetch all reports for a project.
      */
     public Mono<List<ReportDto>> getReportsByProject(String projectId) {
         log.info("Fetching all reports for project ID: {}", projectId);
-        return firebaseService.getReportsByProject(projectId)
-                .switchIfEmpty(Mono.error(new ResourceNotFoundException("No reports found for project ID: " + projectId)));
+        return reportRepository.findByProjectId(projectId)
+                .map(this::toDto)
+                .collectList()
+                .flatMap(reports -> reports.isEmpty()
+                        ? Mono.error(new ResourceNotFoundException("No reports found for project ID: " + projectId))
+                        : Mono.just(reports));
     }
 
     /**
-     * ✅ 3️⃣ Fetch single report by ID
+     * Fetch single report by ID.
      */
     public Mono<ReportDto> getReportById(String reportId) {
         log.info("Fetching report by ID: {}", reportId);
-        return firebaseService.getReportById(reportId)
+        return reportRepository.findById(reportId)
+                .map(this::toDto)
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException("Report not found with ID: " + reportId)));
+    }
+
+    public Mono<ReportDto> getReportByJobId(String jobId) {
+        log.info("Fetching report by job ID: {}", jobId);
+        return reportRepository.findByJobId(jobId)
+                .map(this::toDto)
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("Report not found for job ID: " + jobId)));
     }
 
     /**
@@ -87,5 +101,15 @@ public class ReportService {
 
         document.close();
         return baos.toByteArray();
+    }
+
+    private ReportDto toDto(Report report) {
+        ReportDto dto = new ReportDto();
+        dto.setReportId(report.getReportId());
+        dto.setProjectId(report.getProjectId());
+        dto.setGeneratedAt(report.getGeneratedAt());
+        dto.setSummary(report.getSummary());
+        dto.setFindings(report.getFindings());
+        return dto;
     }
 }

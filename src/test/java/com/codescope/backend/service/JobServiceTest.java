@@ -16,12 +16,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -36,25 +35,19 @@ class JobServiceTest {
     @Autowired
     private AnalysisJobService analysisJobService;
 
-    @MockBean
+    @MockitoBean
     private AnalysisJobRepository analysisJobRepository;
 
-    @MockBean
+    @MockitoBean
     private ProjectRepository projectRepository;
 
-    @MockBean
-    private FirebaseService firebaseService;
-
-    @MockBean
+    @MockitoBean
     private WebSocketEventPublisher webSocketEventPublisher;
 
     @BeforeEach
     void setUp() {
-        // Mocking the async method to prevent execution
-        AnalysisJobService spyAnalysisJobService = spy(analysisJobService);
-        doNothing().when(spyAnalysisJobService).runAnalysisAsync(anyString());
-        
         when(projectRepository.findByProjectId(anyString())).thenReturn(Mono.just(new com.codescope.backend.project.model.Project()));
+        when(projectRepository.findById(anyString())).thenReturn(Mono.empty());
 
         when(analysisJobRepository.save(any(AnalysisJob.class))).thenAnswer(invocation -> {
             AnalysisJob job = invocation.getArgument(0);
@@ -63,10 +56,9 @@ class JobServiceTest {
             }
             job.setCreatedAt(LocalDateTime.now());
             job.setUpdatedAt(LocalDateTime.now());
-            return job;
+            return Mono.just(job);
         });
-
-        when(firebaseService.saveJob(any(AnalysisJob.class))).thenReturn(Mono.just("success"));
+        when(analysisJobRepository.findByJobId(anyString())).thenReturn(Mono.empty());
 
         doNothing().when(webSocketEventPublisher).publishToProject(anyString(), any());
     }
@@ -113,9 +105,9 @@ class JobServiceTest {
                 .status(JobStatus.PENDING)
                 .initiatedBy("user")
                 .build();
-        when(analysisJobRepository.findByJobId(jobId)).thenReturn(Optional.of(existingJob));
+        when(analysisJobRepository.findByJobId(jobId)).thenReturn(Mono.just(existingJob));
 
-        analysisJobService.updateJobStatus(jobId, JobStatus.IN_PROGRESS);
+        analysisJobService.updateJobStatus(jobId, JobStatus.IN_PROGRESS).block();
 
         verify(analysisJobRepository).findByJobId(jobId);
         verify(analysisJobRepository).save(any(AnalysisJob.class));
@@ -127,10 +119,10 @@ class JobServiceTest {
     @DisplayName("Should throw JobNotFoundException when updating status for non-existent job")
     void updateJobStatus_jobNotFound() {
         String jobId = "non-existent-job-for-update";
-        when(analysisJobRepository.findByJobId(jobId)).thenReturn(Optional.empty());
+        when(analysisJobRepository.findByJobId(jobId)).thenReturn(Mono.empty());
 
         assertThrows(JobNotFoundException.class, () -> {
-            analysisJobService.updateJobStatus(jobId, JobStatus.IN_PROGRESS);
+            analysisJobService.updateJobStatus(jobId, JobStatus.IN_PROGRESS).block();
         });
     }
 
@@ -147,7 +139,7 @@ class JobServiceTest {
                 .status(JobStatus.COMPLETED)
                 .result("Test result")
                 .build();
-        when(analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)).thenReturn(Optional.of(mockJob));
+        when(analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)).thenReturn(Mono.just(mockJob));
 
         JobStatusResponseDTO response = analysisJobService.getJobStatus(jobId, projectId, userId).block();
 
@@ -163,7 +155,7 @@ class JobServiceTest {
         String jobId = "non-existent-job-status";
         String projectId = "project-status-id";
         String userId = "user-status";
-        when(analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)).thenReturn(Optional.empty());
+        when(analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)).thenReturn(Mono.empty());
 
         assertThrows(JobNotFoundException.class, () -> {
             analysisJobService.getJobStatus(jobId, projectId, userId).block();
@@ -182,7 +174,7 @@ class JobServiceTest {
                 .initiatedBy("authorized-user") // Different user
                 .status(JobStatus.COMPLETED)
                 .build();
-        when(analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)).thenReturn(Optional.of(mockJob));
+        when(analysisJobRepository.findByJobIdAndProjectId(jobId, projectId)).thenReturn(Mono.just(mockJob));
 
         assertThrows(UnauthorizedJobAccessException.class, () -> {
             analysisJobService.getJobStatus(jobId, projectId, userId).block();

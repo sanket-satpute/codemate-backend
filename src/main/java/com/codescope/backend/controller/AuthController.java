@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.support.WebExchangeBindException;
 import reactor.core.publisher.Mono;
 
 import java.security.Principal;
@@ -31,12 +32,12 @@ public class AuthController {
     ) {
         return authService.register(request)
                 .map(authResponse -> ResponseEntity.ok(new BaseResponse<>(true, "Registration successful", authResponse)))
+                .onErrorResume(WebExchangeBindException.class, e ->
+                        Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                                .body(new BaseResponse<>(false, "Validation failed", null))))
                 .onErrorResume(CustomException.class, e ->
                         Mono.just(ResponseEntity.status(e.getStatus())
-                                .body(new BaseResponse<>(false, e.getMessage(), null))))
-                .onErrorResume(Exception.class, e ->
-                        Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                .body(new BaseResponse<>(false, "An unexpected error occurred during registration: " + e.getMessage(), null))));
+                                .body(new BaseResponse<>(false, e.getMessage(), null))));
     }
 
     @PostMapping("/login")
@@ -45,12 +46,12 @@ public class AuthController {
     ) {
         return authService.login(request)
                 .map(authResponse -> ResponseEntity.ok(new BaseResponse<>(true, "Login successful", authResponse)))
+                .onErrorResume(WebExchangeBindException.class, e ->
+                        Mono.just(ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                                .body(new BaseResponse<>(false, "Validation failed", null))))
                 .onErrorResume(CustomException.class, e ->
                         Mono.just(ResponseEntity.status(e.getStatus())
-                                .body(new BaseResponse<>(false, e.getMessage(), null))))
-                .onErrorResume(Exception.class, e ->
-                        Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                .body(new BaseResponse<>(false, "An unexpected error occurred during login: " + e.getMessage(), null))));
+                                .body(new BaseResponse<>(false, e.getMessage(), null))));
     }
 
     @GetMapping("/me")

@@ -1,20 +1,30 @@
 package com.codescope.backend.realtime.websocket;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.stereotype.Controller;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
-@Controller
+/**
+ * REST endpoint for job status updates.
+ * Replaces the servlet-based @MessageMapping STOMP controller.
+ * Server-pushed job updates are delivered via reactive WebSocket topics.
+ */
+@RestController
+@RequestMapping("/api/jobs")
 @RequiredArgsConstructor
+@Slf4j
 public class JobStatusWebSocketController {
 
     private final WebSocketEventPublisher webSocketEventPublisher;
 
-    @MessageMapping("/job/status")
-    public void handleJobStatusUpdate(WebSocketEventPayload payload) {
-        // This endpoint is primarily for receiving status updates if needed,
-        // but most events are server-pushed.
-        // For now, we can just log the received payload.
-        System.out.println("Received job status update: " + payload);
+    @PostMapping("/status")
+    public Mono<Void> handleJobStatusUpdate(@RequestBody WebSocketEventPayload payload) {
+        log.info("Received job status update: {}", payload);
+        // Broadcast to WebSocket subscribers if needed
+        if (payload.getProjectId() != null) {
+            webSocketEventPublisher.publishToProject(payload.getProjectId(), payload);
+        }
+        return Mono.empty();
     }
 }

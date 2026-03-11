@@ -27,10 +27,15 @@ public class ProjectFile {
 
     private String filename;
 
-    private String filepath; // Stored path on the server
+    private String filepath; // Stored path on the server (local fallback)
 
     private Long fileSize; // in bytes
     private String fileType; // MIME type
+    private String fileExtension; // e.g. "java", "py", "zip"
+
+    // Cloudinary fields
+    private String cloudinaryUrl; // secure_url from Cloudinary
+    private String cloudinaryPublicId; // public_id for deletion
 
     @CreatedDate
     private LocalDateTime uploadedAt;

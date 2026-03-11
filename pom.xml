@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.4</version>
+        <version>3.5.0</version>
         <relativePath/>
     </parent>
 
@@ -20,8 +20,8 @@
 
     <properties>
         <java.version>17</java.version>
-        <spring-cloud.version>2023.0.3</spring-cloud.version>
-        <spring-cloud-gcp.version>5.5.0</spring-cloud-gcp.version>
+        <spring-cloud.version>2024.0.0</spring-cloud.version>
+        <spring-ai.version>1.0.0</spring-ai.version>
         <jjwt.version>0.11.5</jjwt.version>
         <!-- Dependency versions -->
         <tika.version>2.9.2</tika.version>
@@ -68,18 +68,10 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- 🔥 Firebase Admin SDK -->
-        <dependency>
-            <groupId>com.google.firebase</groupId>
-            <artifactId>firebase-admin</artifactId>
-            <version>9.2.0</version>
-        </dependency>
-
-        <!-- 🧰 Jackson JSON Parser -->
+        <!-- 🧰 Jackson JSON Parser (version managed by Spring Boot BOM) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.17.1</version>
         </dependency>
 
         <!-- 💡 Lombok -->
@@ -179,22 +171,31 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- 📘 Swagger / OpenAPI Documentation -->
+        <!-- 📘 Swagger / OpenAPI Documentation (WebFlux) -->
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.6.0</version>
+            <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+            <version>2.8.6</version>
+        </dependency>
+
+        <!-- 🤖 Spring AI — OpenAI Integration -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
+        </dependency>
+
+
+
+        <!-- 📊 Actuator — Health Checks & Monitoring -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
         <!-- Cloudinary storage for 25 GB free media hosting -->
         <dependency>
             <groupId>com.cloudinary</groupId>
             <artifactId>cloudinary-http5</artifactId>
-            <version>2.0.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.cloudinary</groupId>
-            <artifactId>cloudinary-taglib</artifactId>
             <version>2.0.0</version>
         </dependency>
         <dependency>
@@ -255,9 +256,9 @@
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>com.google.cloud</groupId>
-                <artifactId>spring-cloud-gcp-dependencies</artifactId>
-                <version>${spring-cloud-gcp.version}</version>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

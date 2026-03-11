@@ -3,18 +3,20 @@ package com.codescope.backend.controller;
 import com.codescope.backend.analysisjob.dto.AnalysisJobResponseDTO;
 import com.codescope.backend.analysisjob.enums.JobStatus;
 import com.codescope.backend.analysisjob.service.AnalysisJobService;
+import com.codescope.backend.config.TestSecurityConfig;
 import com.codescope.backend.dto.upload.FileDocumentDto;
 import com.codescope.backend.dto.upload.FileUploadResponseDto;
+import com.codescope.backend.project.model.Project;
+import com.codescope.backend.project.repository.ProjectRepository;
 import com.codescope.backend.service.AIService;
-import com.codescope.backend.service.FirebaseService;
 import com.codescope.backend.upload.controller.UploadController;
-import com.codescope.backend.upload.model.ProjectFile;
 import com.codescope.backend.upload.service.FileStorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,21 +33,22 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @WebFluxTest(UploadController.class)
+@Import(TestSecurityConfig.class)
 class UploadControllerTest {
 
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean
     private FileStorageService fileStorageService;
 
-    @MockBean
-    private FirebaseService firebaseService;
+    @MockitoBean
+    private ProjectRepository projectRepository;
 
-    @MockBean
+    @MockitoBean
     private AnalysisJobService analysisJobService;
 
-    @MockBean
+    @MockitoBean
     private AIService aiService;
 
     @Test
@@ -69,7 +72,9 @@ class UploadControllerTest {
 
         when(fileStorageService.processAndStoreFile(any()))
                 .thenReturn(Mono.just(List.of(mockFileDocument)));
-        when(firebaseService.addFileToProject(anyString(), any(ProjectFile.class), anyString(), anyString())).thenReturn(Mono.just("mockFileId"));
+        when(projectRepository.findByProjectId(anyString())).thenReturn(Mono.just(Project.builder().build()));
+        when(projectRepository.findById(anyString())).thenReturn(Mono.empty());
+        when(projectRepository.save(any(Project.class))).thenReturn(Mono.just(Project.builder().build()));
         when(analysisJobService.startNewJob(anyString(), anyString())).thenReturn(Mono.just(mockJobResponse));
         when(aiService.analyzeCode(anyString(), anyString())).thenReturn(Mono.just("AI analysis result"));
 
@@ -91,7 +96,7 @@ class UploadControllerTest {
                 .jsonPath("$.data.projectId").isEqualTo(projectId)
                 .jsonPath("$.data.jobId").isEqualTo(jobId)
                 .jsonPath("$.data.status").isEqualTo("PENDING")
-                .jsonPath("$.data.uploadedFilesCount").isEqualTo(1);
+                .jsonPath("$.data.filesProcessed").isEqualTo(1);
     }
 
     @Test

@@ -22,4 +22,5 @@ public class AnalysisJobResponseDTO {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private String result; // optional
+    private String model; // AI model used for the job
 }

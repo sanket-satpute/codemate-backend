@@ -5,6 +5,7 @@ import com.codescope.backend.dto.auth.LoginRequest;
 import com.codescope.backend.dto.auth.RegisterRequest;
 import com.codescope.backend.dto.auth.UserDTO;
 import com.codescope.backend.exception.CustomException;
+import com.codescope.backend.model.AccountStatus;
 import com.codescope.backend.model.Role;
 import com.codescope.backend.model.User;
 import com.codescope.backend.repository.UserRepository;
@@ -19,6 +20,8 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -59,12 +62,37 @@ public class AuthService {
     }
 
     public Mono<AuthResponse> login(LoginRequest request) {
-        return authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getEmail(),
-                        request.getPassword()
+        // First check if the account exists and its status
+        return userRepository.findByEmail(request.getEmail())
+                .switchIfEmpty(Mono.error(new CustomException("Invalid email or password", HttpStatus.UNAUTHORIZED)))
+                .flatMap(user -> {
+                    // Check if account is deleted
+                    if (user.getAccountStatus() == AccountStatus.DELETED) {
+                        return Mono.error(new CustomException("This account has been permanently deleted",
+                                HttpStatus.GONE));
+                    }
+                    // Check if account is disabled
+                    if (user.getAccountStatus() == AccountStatus.DISABLED) {
+                        if (user.getDisabledUntil() != null && LocalDateTime.now().isAfter(user.getDisabledUntil())) {
+                            // Disable period expired → re-enable automatically
+                            user.setAccountStatus(AccountStatus.ACTIVE);
+                            user.setDisabledUntil(null);
+                            user.setUpdatedAt(LocalDateTime.now());
+                            return userRepository.save(user);
+                        } else {
+                            return Mono.error(new CustomException(
+                                    "Your account is temporarily disabled until " + user.getDisabledUntil(),
+                                    HttpStatus.FORBIDDEN));
+                        }
+                    }
+                    return Mono.just(user);
+                })
+                .flatMap(user -> authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(
+                                request.getEmail(),
+                                request.getPassword()
+                        ))
                 )
-        )
                 .flatMap(authentication -> {
                     return Mono.just((User) authentication.getPrincipal());
                 })

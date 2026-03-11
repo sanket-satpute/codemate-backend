@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.redis.core.RedisHash; // Import for Redis
+import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
@@ -17,11 +17,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@RedisHash("analysisJob") // Annotation for Redis entity
+@Document(collection = "analysis_jobs")
 public class AnalysisJob {
 
-    @Id // Spring Data Id for Redis
-    private String jobId; // Using jobId as the Redis ID
+    @Id
+    private String jobId;
 
     private String projectId;
 

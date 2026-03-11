@@ -9,6 +9,10 @@ import reactor.core.publisher.Mono;
 @Repository
 public interface ProjectFileRepository extends ReactiveMongoRepository<ProjectFile, String> {
     Flux<ProjectFile> findByProjectId(String projectId);
+
     Mono<ProjectFile> findByProjectIdAndId(String projectId, String id);
+
     Mono<Void> deleteByProjectIdAndId(String projectId, String id);
+
+    Mono<Long> countByProjectIdIn(java.util.List<String> projectIds);
 }

@@ -50,17 +50,21 @@ public class FileStorageService {
     private final List<String> ALLOWED_FILE_TYPES = List.of(
             "text/plain", "application/pdf", "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "text/csv",
             "image/jpeg", "image/png", "application/zip", "application/x-zip-compressed",
             "text/x-java-source", "text/html", "text/css", "application/javascript",
-            "application/json", "application/xml", "text/xml"
-    );
+            "application/json", "application/xml", "text/xml");
 
     public Mono<FileUploadResponseDTO> saveProjectFile(MultipartFile file, String projectId) {
         return projectRepository.findByProjectId(projectId)
+                .switchIfEmpty(projectRepository.findById(projectId))
                 .switchIfEmpty(Mono.error(new FileNotFoundException("Project not found with ID: " + projectId)))
                 .flatMap(project -> {
                     if (file.getSize() > MAX_FILE_SIZE) {
-                        return Mono.error(new FileUploadException("File size exceeds the limit of " + MAX_FILE_SIZE / (1024 * 1024) + "MB"));
+                        return Mono.error(new FileUploadException(
+                                "File size exceeds the limit of " + MAX_FILE_SIZE / (1024 * 1024) + "MB"));
                     }
 
                     String contentType = file.getContentType();
@@ -88,9 +92,11 @@ public class FileStorageService {
                                 .build();
                         return projectFileRepository.save(projectFile);
                     }).map(savedFile -> {
-                        // The mapToFileUploadResponseDTO method needs the full ProjectFile, not just parts.
+                        // The mapToFileUploadResponseDTO method needs the full ProjectFile, not just
+                        // parts.
                         return mapToFileUploadResponseDTO(savedFile);
-                    }).onErrorResume(IOException.class, ex -> Mono.error(new FileUploadException("Could not store file " + originalFilename + ". Please try again!", ex)));
+                    }).onErrorResume(IOException.class, ex -> Mono.error(new FileUploadException(
+                            "Could not store file " + originalFilename + ". Please try again!", ex)));
                 });
     }
 
@@ -102,6 +108,12 @@ public class FileStorageService {
         return Mono.fromCallable(() -> {
             Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(uploadPath);
+
+            if (fileType != null && (fileType.equals("application/zip")
+                    || fileType.equals("application/x-zip-compressed") || fileExtension.equals("zip"))) {
+                log.info("Processing zip file: {}", originalFilename);
+                return MultipartFileUtil.extractZipContent(file.getInputStream(), uploadPath, originalFilename);
+            }
 
             String uniqueFilename = UUID.randomUUID() + "_" + originalFilename;
             Path targetLocation = uploadPath.resolve(uniqueFilename);
@@ -126,7 +138,8 @@ public class FileStorageService {
 
     public Mono<Resource> loadFileAsResource(String projectId, String fileId) {
         return projectFileRepository.findByProjectIdAndId(projectId, fileId)
-                .switchIfEmpty(Mono.error(new FileNotFoundException("File not found with ID " + fileId + " in project " + projectId)))
+                .switchIfEmpty(Mono.error(
+                        new FileNotFoundException("File not found with ID " + fileId + " in project " + projectId)))
                 .flatMap(projectFile -> Mono.fromCallable(() -> {
                     Path filePath = Paths.get(projectFile.getFilepath()).normalize();
                     Resource resource = new UrlResource(filePath.toUri());
@@ -135,20 +148,21 @@ public class FileStorageService {
                     } else {
                         throw new FileNotFoundException("File not found " + projectFile.getFilename());
                     }
-                }).onErrorResume(MalformedURLException.class, ex -> Mono.error(new FileNotFoundException("File not found " + projectFile.getFilename(), ex))));
+                }).onErrorResume(MalformedURLException.class, ex -> Mono
+                        .error(new FileNotFoundException("File not found " + projectFile.getFilename(), ex))));
     }
 
     public Mono<Void> deleteFile(String projectId, String fileId) {
         return projectFileRepository.findByProjectIdAndId(projectId, fileId)
-                .switchIfEmpty(Mono.error(new FileNotFoundException("File not found with ID " + fileId + " in project " + projectId)))
-                .flatMap(projectFile -> Mono.fromRunnable(() -> {
-                    try {
-                        Path filePath = Paths.get(projectFile.getFilepath()).normalize();
-                        Files.deleteIfExists(filePath);
-                    } catch (IOException ex) {
-                        throw new FileUploadException("Could not delete file " + projectFile.getFilename(), ex);
-                    }
-                }).then(projectFileRepository.delete(projectFile)));
+                .switchIfEmpty(Mono.error(
+                        new FileNotFoundException("File not found with ID " + fileId + " in project " + projectId)))
+                .flatMap(projectFile -> Mono.fromCallable(() -> {
+                    Path filePath = Paths.get(projectFile.getFilepath()).normalize();
+                    Files.deleteIfExists(filePath);
+                    return projectFile;
+                }).onErrorMap(IOException.class, ex ->
+                        new FileUploadException("Could not delete file " + projectFile.getFilename(), ex))
+                .then(projectFileRepository.delete(projectFile)));
     }
 
     private FileUploadResponseDTO mapToFileUploadResponseDTO(ProjectFile projectFile) {

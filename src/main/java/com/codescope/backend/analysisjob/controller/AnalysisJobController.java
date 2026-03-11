@@ -23,54 +23,66 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AnalysisJobController {
 
-    private final AnalysisJobService analysisJobService;
+        private final AnalysisJobService analysisJobService;
 
-    @PostMapping("/start")
-    @PreAuthorize("@projectSecurity.isOwner(authentication, #projectId)")
-    public ResponseEntity<BaseResponse<AnalysisJobResponseDTO>> startAnalysisJob(
-            @PathVariable Long projectId,
-            @Valid @RequestBody CreateJobRequestDTO request,
-            @AuthenticationPrincipal User user) {
-        try {
-            AnalysisJobResponseDTO job = analysisJobService.createJob(projectId.toString(), request.getJobType(), user.getUsername()).block();
-            analysisJobService.runAnalysisAsync(job.getId().toString());
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(new BaseResponse<>(true, "Analysis job started successfully", job));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new BaseResponse<>(false, "Failed to start analysis job: " + e.getMessage(), null));
+        @PostMapping("/start")
+        @PreAuthorize("@projectSecurity.isOwner(authentication, #projectId)")
+        public Mono<ResponseEntity<BaseResponse<AnalysisJobResponseDTO>>> startAnalysisJob(
+                        @PathVariable String projectId,
+                        @Valid @RequestBody CreateJobRequestDTO request,
+                        @AuthenticationPrincipal User user) {
+                String userId = user != null ? user.getId() : null;
+                return analysisJobService.createJob(projectId, request.getJobType(), resolveUsername(user), userId)
+                                .map(job -> {
+                                        return ResponseEntity.status(HttpStatus.CREATED)
+                                                        .body(new BaseResponse<>(true,
+                                                                        "Analysis job started successfully", job));
+                                })
+                                .onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                                .body(new BaseResponse<>(false,
+                                                                "Failed to start analysis job: " + e.getMessage(),
+                                                                null))));
         }
-    }
 
-    @GetMapping("/jobs")
-    @PreAuthorize("@projectSecurity.isOwner(authentication, #projectId)")
-    public ResponseEntity<BaseResponse<List<AnalysisJobResponseDTO>>> getProjectAnalysisJobs(
-            @PathVariable Long projectId,
-            @AuthenticationPrincipal User user) {
-        try {
-            List<AnalysisJobResponseDTO> jobs = analysisJobService.getProjectJobs(projectId.toString(), user.getUsername()).collectList().block();
-            return ResponseEntity.ok(new BaseResponse<>(true, "Project analysis jobs retrieved successfully", jobs));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new BaseResponse<>(false, "Failed to retrieve project analysis jobs: " + e.getMessage(), null));
+        @GetMapping("/jobs")
+        @PreAuthorize("@projectSecurity.isOwner(authentication, #projectId)")
+        public Mono<ResponseEntity<BaseResponse<List<AnalysisJobResponseDTO>>>> getProjectAnalysisJobs(
+                        @PathVariable String projectId,
+                        @AuthenticationPrincipal User user) {
+                return analysisJobService.getProjectJobs(projectId, resolveUsername(user))
+                                .collectList()
+                                .map(jobs -> ResponseEntity
+                                                .ok(new BaseResponse<>(true,
+                                                                "Project analysis jobs retrieved successfully", jobs)))
+                                .onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                                .body(new BaseResponse<>(false,
+                                                                "Failed to retrieve project analysis jobs: "
+                                                                                + e.getMessage(),
+                                                                null))));
         }
-    }
 
-    @GetMapping("/jobs/{jobId}")
-    @PreAuthorize("@projectSecurity.isOwner(authentication, #projectId)")
-    public ResponseEntity<BaseResponse<JobStatusResponseDTO>> getAnalysisJobStatus(
-            @PathVariable Long projectId,
-            @PathVariable Long jobId,
-            @AuthenticationPrincipal User user) {
-        try {
-            JobStatusResponseDTO jobStatus = analysisJobService.getJobStatus(jobId.toString(), projectId.toString(), user.getUsername()).block();
-            return ResponseEntity.ok(new BaseResponse<>(true, "Analysis job status retrieved successfully", jobStatus));
-        } catch (JobNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(new BaseResponse<>(false, e.getMessage(), null));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new BaseResponse<>(false, "Failed to retrieve analysis job status: " + e.getMessage(), null));
+        @GetMapping("/jobs/{jobId}")
+        @PreAuthorize("@projectSecurity.isOwner(authentication, #projectId)")
+        public Mono<ResponseEntity<BaseResponse<JobStatusResponseDTO>>> getAnalysisJobStatus(
+                        @PathVariable String projectId,
+                        @PathVariable String jobId,
+                        @AuthenticationPrincipal User user) {
+                return analysisJobService.getJobStatus(jobId, projectId, resolveUsername(user))
+                                .map(jobStatus -> ResponseEntity
+                                                .ok(new BaseResponse<>(true,
+                                                                "Analysis job status retrieved successfully",
+                                                                jobStatus)))
+                                .onErrorResume(JobNotFoundException.class,
+                                                e -> Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                                                                .body(new BaseResponse<>(false, e.getMessage(), null))))
+                                .onErrorResume(e -> Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                                .body(new BaseResponse<>(false,
+                                                                "Failed to retrieve analysis job status: "
+                                                                                + e.getMessage(),
+                                                                null))));
         }
-    }
+
+        private String resolveUsername(User user) {
+                return user != null ? user.getUsername() : "system";
+        }
 }

@@ -1,25 +1,32 @@
 package com.codescope.backend.config;
 
+import com.codescope.backend.realtime.websocket.ReactiveWebSocketHandler;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.messaging.simp.config.MessageBrokerRegistry;
-import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
-import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
-import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.reactive.HandlerMapping;
+import org.springframework.web.reactive.handler.SimpleUrlHandlerMapping;
+import org.springframework.web.reactive.socket.server.support.WebSocketHandlerAdapter;
 
+import java.util.Map;
+
+/**
+ * Reactive WebSocket configuration.
+ * Registers the /ws endpoint using Spring WebFlux's native WebSocket support
+ * (not servlet-based STOMP/SockJS which is incompatible with reactive mode).
+ */
 @Configuration
-@EnableWebSocketMessageBroker
-public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+public class WebSocketConfig {
 
-    @Override
-    public void configureMessageBroker(MessageBrokerRegistry config) {
-        config.enableSimpleBroker("/topic");
-        config.setApplicationDestinationPrefixes("/app");
+    @Bean
+    public HandlerMapping webSocketHandlerMapping(ReactiveWebSocketHandler handler) {
+        SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+        mapping.setUrlMap(Map.of("/ws", handler));
+        mapping.setOrder(-1); // High priority
+        return mapping;
     }
 
-    @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost:4200", "http://localhost:8080") // Allow Angular frontend origin
-                .withSockJS(); // Enable SockJS fallback options
+    @Bean
+    public WebSocketHandlerAdapter webSocketHandlerAdapter() {
+        return new WebSocketHandlerAdapter();
     }
 }

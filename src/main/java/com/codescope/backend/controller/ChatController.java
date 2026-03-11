@@ -4,57 +4,70 @@ import com.codescope.backend.chat.dto.ChatMessageDTO;
 import com.codescope.backend.chat.dto.ChatRequestDTO;
 import com.codescope.backend.chat.dto.ChatResponseDTO;
 import com.codescope.backend.chat.ChatService;
+import com.codescope.backend.dto.BaseResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/chat")
 @RequiredArgsConstructor
+@Slf4j
+@PreAuthorize("isAuthenticated()")
 public class ChatController {
 
     private final ChatService chatService;
 
     @PostMapping("/{projectId}/send")
-    public ResponseEntity<?> sendMessage(@PathVariable String projectId, @Valid @RequestBody ChatRequestDTO chatRequest) {
-        ChatResponseDTO response = chatService.addUserMessage(projectId, chatRequest.getMessage())
-                .zipWith(chatService.processUserMessage(projectId, chatRequest.getMessage()))
-                .map(tuple -> new ChatResponseDTO(
-                        ChatMessageDTO.fromEntity(tuple.getT1()),
-                        ChatMessageDTO.fromEntity(tuple.getT2())
-                )).block();
-        Map<String, Object> apiResponse = new HashMap<>();
-        apiResponse.put("status", "success");
-        apiResponse.put("data", response);
-        return ResponseEntity.ok(apiResponse);
+    public Mono<ResponseEntity<BaseResponse<ChatResponseDTO>>> sendMessage(
+            @PathVariable String projectId,
+            @Valid @RequestBody ChatRequestDTO chatRequest) {
+        return chatService.addUserMessage(projectId, chatRequest.getMessage())
+                .flatMap(userMessage -> chatService.processUserMessage(projectId, chatRequest.getMessage())
+                        .map(aiMessage -> new ChatResponseDTO(
+                                ChatMessageDTO.fromEntity(userMessage),
+                                ChatMessageDTO.fromEntity(aiMessage))))
+                .map(response -> ResponseEntity.ok(
+                        BaseResponse.success(response, "Message sent successfully")))
+                .onErrorResume(e -> {
+                    log.error("Failed to send message for project {}: {}", projectId, e.getMessage(), e);
+                    String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    return Mono.just(ResponseEntity.internalServerError()
+                            .body(BaseResponse.error("Failed to send message: " + errorMsg)));
+                });
     }
 
     @GetMapping("/{projectId}/history")
-    public ResponseEntity<?> getChatHistory(@PathVariable String projectId) {
-        List<ChatMessageDTO> history = chatService.getChatHistory(projectId)
+    public Mono<ResponseEntity<BaseResponse<java.util.List<ChatMessageDTO>>>> getChatHistory(
+            @PathVariable String projectId) {
+        return chatService.getChatHistory(projectId)
                 .map(ChatMessageDTO::fromEntity)
-                .collect(Collectors.toList()).block();
-        Map<String, Object> data = new HashMap<>();
-        data.put("messages", history);
-        Map<String, Object> apiResponse = new HashMap<>();
-        apiResponse.put("status", "success");
-        apiResponse.put("data", data);
-        return ResponseEntity.ok(apiResponse);
+                .collectList()
+                .map(history -> ResponseEntity.ok(
+                        BaseResponse.success(history, "Chat history retrieved successfully")))
+                .onErrorResume(e -> Mono.just(ResponseEntity.internalServerError()
+                        .body(BaseResponse.error("Failed to retrieve chat history: " + e.getMessage()))));
     }
 
     @DeleteMapping("/{projectId}/clear")
-    public ResponseEntity<?> clearChat(@PathVariable String projectId) {
-        chatService.clearChat(projectId).block();
-        Map<String, Object> apiResponse = new HashMap<>();
-        apiResponse.put("status", "success");
-        apiResponse.put("message", "Chat history cleared successfully.");
-        return ResponseEntity.ok(apiResponse);
+    public Mono<ResponseEntity<BaseResponse<Void>>> clearChat(@PathVariable String projectId) {
+        return chatService.clearChat(projectId)
+                .then(Mono.just(ResponseEntity.ok(
+                        BaseResponse.<Void>success(null, "Chat history cleared successfully"))))
+                .onErrorResume(e -> Mono.just(ResponseEntity.internalServerError()
+                        .body(BaseResponse.<Void>error("Failed to clear chat: " + e.getMessage()))));
+    }
+
+    @PostMapping(value = "/{projectId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> streamMessage(
+            @PathVariable String projectId,
+            @Valid @RequestBody ChatRequestDTO chatRequest) {
+        return chatService.streamUserMessage(projectId, chatRequest.getMessage());
     }
 }

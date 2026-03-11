@@ -17,5 +17,7 @@ public class DashboardDTO {
     private long totalJobs;
     private long successfulJobs;
     private long failedJobs;
+    private long totalFiles;
+    private String lastActive;
     private Map<String, Long> modelUsage;
 }

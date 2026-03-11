@@ -1,7 +1,6 @@
 package com.codescope.backend.service;
 
-import com.codescope.backend.ai.AIServiceFactory;
-import com.codescope.backend.ai.LLMService;
+import com.codescope.backend.ai.client.ILLMClient;
 import com.codescope.backend.dto.analysis.AIResponseDto;
 import com.codescope.backend.model.AIResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -23,7 +22,7 @@ import java.util.Map;
 @Slf4j
 public class AnalysisService {
 
-    private final AIServiceFactory aiServiceFactory;
+    private final ILLMClient llmClient;
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${ai.defaultModel:huggingface}")
@@ -32,8 +31,8 @@ public class AnalysisService {
     @Value("${ai.huggingface.token:}")
     private String hfToken;
 
-    public AnalysisService(AIServiceFactory aiServiceFactory) {
-        this.aiServiceFactory = aiServiceFactory;
+    public AnalysisService(ILLMClient llmClient) {
+        this.llmClient = llmClient;
     }
 
     /**
@@ -43,22 +42,9 @@ public class AnalysisService {
      * @return A Mono emitting the AIResponseDto.
      */
     public Mono<AIResponseDto> analyzeAndBuildResponse(String input) {
-        String provider = defaultProvider.toLowerCase();
-        Object serviceObj = aiServiceFactory.getService(provider);
+        final String finalProvider = defaultProvider.toLowerCase();
 
-        if (!(serviceObj instanceof LLMService)) {
-            log.warn("Unknown or non-LLM provider '{}', falling back to HuggingFace/Ollama", provider);
-            provider = hfToken.isEmpty() ? "ollama" : "huggingface";
-            serviceObj = aiServiceFactory.getService(provider);
-        }
-
-        if (!(serviceObj instanceof LLMService service)) {
-            log.warn("No active AI service found, using fallback mock response.");
-            return Mono.just(buildFallback("Mock", "No AI provider configured."));
-        }
-        final String finalProvider = provider;
-
-        return service.queryModel(input).flatMap(raw -> {
+        return llmClient.chat(input).flatMap(raw -> {
             if (raw == null || raw.isBlank()) {
                 return Mono.just(buildFallback(finalProvider, "AI returned no response."));
             }
@@ -74,11 +60,11 @@ public class AnalysisService {
                 resp.setMetadata(Map.of(
                         "timestamp", Instant.now().toString(),
                         "provider", finalProvider,
-                        "sourceRawLen", raw.length()
-                ));
+                        "sourceRawLen", raw.length()));
                 resp.setGeneratedAt(new Date());
 
-                log.info("✅ AnalysisService: completed with provider={} (summaryLen={})", finalProvider, summary.length());
+                log.info("✅ AnalysisService: completed with provider={} (summaryLen={})", finalProvider,
+                        summary.length());
                 return Mono.just(convertToDto(resp));
             } catch (Exception e) {
                 log.error("❌ AnalysisService failed during response processing: {}", e.getMessage());
@@ -101,7 +87,8 @@ public class AnalysisService {
         try {
             JsonNode root = mapper.readTree(raw);
             if (root.has("findings") && root.get("findings").isArray()) {
-                return mapper.convertValue(root.get("findings"), new TypeReference<List<Map<String, Object>>>() {});
+                return mapper.convertValue(root.get("findings"), new TypeReference<List<Map<String, Object>>>() {
+                });
             }
         } catch (Exception e) {
             log.error("Error parsing findings from AI response", e);
@@ -120,16 +107,18 @@ public class AnalysisService {
 
             // Common patterns for AI responses
             // 1. Direct text field
-            String[] summaryFields = {"generated_text", "text", "content", "response", "output"};
+            String[] summaryFields = { "generated_text", "text", "content", "response", "output" };
             for (String field : summaryFields) {
-                if (root.has(field)) return root.get(field).asText();
+                if (root.has(field))
+                    return root.get(field).asText();
             }
 
             // 2. Array of results
             if (root.isArray() && root.size() > 0) {
                 JsonNode firstElement = root.get(0);
                 for (String field : summaryFields) {
-                    if (firstElement.has(field)) return firstElement.get(field).asText();
+                    if (firstElement.has(field))
+                        return firstElement.get(field).asText();
                 }
                 // If the first element is an object with a 'message' field containing 'content'
                 if (firstElement.has("message") && firstElement.get("message").has("content")) {
@@ -140,18 +129,21 @@ public class AnalysisService {
             // 3. Nested structures like "choices" array
             if (root.has("choices") && root.get("choices").isArray() && root.get("choices").size() > 0) {
                 JsonNode firstChoice = root.get("choices").get(0);
-                if (firstChoice.has("text")) return firstChoice.get("text").asText();
+                if (firstChoice.has("text"))
+                    return firstChoice.get("text").asText();
                 if (firstChoice.has("message") && firstChoice.get("message").has("content")) {
                     return firstChoice.get("message").get("content").asText();
                 }
             }
 
-            // If no specific field is found, return the raw content if it's a simple string node
+            // If no specific field is found, return the raw content if it's a simple string
+            // node
             if (root.isTextual()) {
                 return root.asText();
             }
 
-            // Fallback: return a truncated version of the raw response if parsing fails or no specific field is found
+            // Fallback: return a truncated version of the raw response if parsing fails or
+            // no specific field is found
             log.warn("Could not find specific summary field in AI response. Returning raw content.");
             return raw.length() > 10000 ? raw.substring(0, 10000) : raw;
 

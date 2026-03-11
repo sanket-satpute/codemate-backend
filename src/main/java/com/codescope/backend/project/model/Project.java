@@ -26,7 +26,7 @@ public class Project {
     @Id
     private String id; // MongoDB ID
 
-    private String projectId; // Firestore ID
+    private String projectId; // Public API identifier (stable across migrations)
 
     private String ownerId;
 

@@ -21,21 +21,23 @@ public class AIAnalysisPipeline {
     private final NormalizationService normalizationService;
     private final AnalysisAggregationService aggregationService;
 
-    public AIAnalysisPipeline(ChunkingService chunkingService, ILLMClient llmClient, NormalizationService normalizationService, AnalysisAggregationService aggregationService) {
+    public AIAnalysisPipeline(ChunkingService chunkingService, ILLMClient llmClient,
+            NormalizationService normalizationService, AnalysisAggregationService aggregationService) {
         this.chunkingService = chunkingService;
         this.llmClient = llmClient;
         this.normalizationService = normalizationService;
         this.aggregationService = aggregationService;
     }
 
-    public LLMAnalysisAggregate run(String projectId) {
-        List<FileChunk> chunks = chunkingService.generateChunks(projectId);
+    public LLMAnalysisAggregate run(String projectId,
+            List<com.codescope.backend.upload.model.ProjectFile> projectFiles) {
+        List<FileChunk> chunks = chunkingService.generateChunks(projectId, projectFiles);
         List<LLMChunkResponse> responses = chunks.stream()
                 .map(llmClient::performAnalysis)
                 .collect(Collectors.toList());
         List<LLMNormalizedResult> normalizedResults = responses.stream()
                 .map(normalizationService::normalize)
                 .collect(Collectors.toList());
-        return aggregationService.aggregate(normalizedResults);
+        return aggregationService.aggregate(projectId, normalizedResults);
     }
 }

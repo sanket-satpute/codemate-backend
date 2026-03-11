@@ -1,7 +1,6 @@
 package com.codescope.backend.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,6 +30,11 @@ public class User implements UserDetails {
 
     private Role role;
 
+    @Builder.Default
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
+
+    private LocalDateTime disabledUntil; // null = not temporarily disabled
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -56,7 +60,11 @@ public class User implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        // Account is locked if status is DISABLED and disabledUntil is in the future
+        if (accountStatus == AccountStatus.DISABLED && disabledUntil != null) {
+            return LocalDateTime.now().isAfter(disabledUntil);
+        }
+        return accountStatus != AccountStatus.DISABLED;
     }
 
     @Override
@@ -66,6 +74,6 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return accountStatus == null || accountStatus == AccountStatus.ACTIVE;
     }
 }

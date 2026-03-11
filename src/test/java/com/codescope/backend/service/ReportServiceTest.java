@@ -3,7 +3,7 @@ package com.codescope.backend.service;
 import com.codescope.backend.dto.report.ReportDto;
 import com.codescope.backend.exception.ResourceNotFoundException;
 import com.codescope.backend.model.Report; // Keep this for ReportService.saveReport argument
-import com.codescope.backend.dto.report.ReportCreationResponseDto;
+import com.codescope.backend.repository.ReportRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,15 +19,13 @@ import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
- * Unit tests for ReportService (mocking FirebaseService)
+ * Unit tests for ReportService (mocking ReportRepository)
  */
 @ExtendWith(MockitoExtension.class)
 class ReportServiceTest {
@@ -36,7 +34,7 @@ class ReportServiceTest {
     private ReportService reportService;
 
     @Mock
-    private FirebaseService firebaseService;
+    private ReportRepository reportRepository;
 
     private String testProjectId = "project123";
     private String testReportId = "report456";
@@ -64,51 +62,53 @@ class ReportServiceTest {
     @Test
     @DisplayName("Should save a new report and return its ID")
     void saveReport_shouldReturnReportId() {
-        Report newReport = new Report(); // FirebaseService.saveReport expects a Report model
-        when(firebaseService.saveReport(any(Report.class))).thenReturn(Mono.just(testReportId));
+        Report newReport = new Report();
+        when(reportRepository.save(any(Report.class))).thenReturn(Mono.just(mockReport));
 
         Mono<String> resultMono = reportService.saveReport(newReport);
 
         StepVerifier.create(resultMono)
                 .expectNext(testReportId)
                 .verifyComplete();
-        verify(firebaseService, times(1)).saveReport(any(Report.class));
+        verify(reportRepository, times(1)).save(any(Report.class));
     }
 
     @Test
     @DisplayName("Should throw RuntimeException if saving report fails")
     void saveReport_shouldThrowExceptionOnFailure() {
         Report newReport = new Report();
-        when(firebaseService.saveReport(any(Report.class))).thenReturn(Mono.error(new RuntimeException("Firebase error")));
+        when(reportRepository.save(any(Report.class))).thenReturn(Mono.error(new RuntimeException("Database error")));
 
         Mono<String> resultMono = reportService.saveReport(newReport);
 
         StepVerifier.create(resultMono)
                 .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
-                        throwable.getMessage().contains("Firebase error"))
+                        throwable.getMessage().contains("Database error"))
                 .verify();
-        verify(firebaseService, times(1)).saveReport(any(Report.class));
+        verify(reportRepository, times(1)).save(any(Report.class));
     }
 
     // GET REPORTS BY PROJECT TEST
     @Test
     @DisplayName("Should fetch all reports for a project")
     void getReportsByProject_shouldReturnListOfReportDtos() {
-        List<ReportDto> mockReportDtos = List.of(mockReportDto);
-        when(firebaseService.getReportsByProject(testProjectId)).thenReturn(Mono.just(mockReportDtos));
+        when(reportRepository.findByProjectId(testProjectId)).thenReturn(reactor.core.publisher.Flux.just(mockReport));
 
         Mono<List<ReportDto>> resultMono = reportService.getReportsByProject(testProjectId);
 
         StepVerifier.create(resultMono)
-                .expectNext(mockReportDtos)
+                .assertNext(reportDtos -> {
+                    assertEquals(1, reportDtos.size());
+                    assertEquals(testReportId, reportDtos.get(0).getReportId());
+                })
                 .verifyComplete();
-        verify(firebaseService, times(1)).getReportsByProject(testProjectId);
+        verify(reportRepository, times(1)).findByProjectId(testProjectId);
     }
 
     @Test
     @DisplayName("Should throw ResourceNotFoundException when no reports found for project")
     void getReportsByProject_shouldThrowNotFound() {
-        when(firebaseService.getReportsByProject(testProjectId)).thenReturn(Mono.empty());
+        when(reportRepository.findByProjectId(testProjectId)).thenReturn(reactor.core.publisher.Flux.empty());
 
         Mono<List<ReportDto>> resultMono = reportService.getReportsByProject(testProjectId);
 
@@ -116,27 +116,27 @@ class ReportServiceTest {
                 .expectErrorMatches(throwable -> throwable instanceof ResourceNotFoundException &&
                         throwable.getMessage().contains("No reports found for project ID: " + testProjectId))
                 .verify();
-        verify(firebaseService, times(1)).getReportsByProject(testProjectId);
+        verify(reportRepository, times(1)).findByProjectId(testProjectId);
     }
 
     // GET REPORT BY ID TEST
     @Test
     @DisplayName("Should fetch single report by ID")
     void getReportById_shouldReturnReportDto() {
-        when(firebaseService.getReportById(testReportId)).thenReturn(Mono.just(mockReportDto));
+        when(reportRepository.findById(testReportId)).thenReturn(Mono.just(mockReport));
 
         Mono<ReportDto> resultMono = reportService.getReportById(testReportId);
 
         StepVerifier.create(resultMono)
-                .expectNext(mockReportDto)
+                .assertNext(reportDto -> assertEquals(testReportId, reportDto.getReportId()))
                 .verifyComplete();
-        verify(firebaseService, times(1)).getReportById(testReportId);
+        verify(reportRepository, times(1)).findById(testReportId);
     }
 
     @Test
     @DisplayName("Should throw ResourceNotFoundException when report not found by ID")
     void getReportById_shouldThrowNotFound() {
-        when(firebaseService.getReportById(testReportId)).thenReturn(Mono.empty());
+        when(reportRepository.findById(testReportId)).thenReturn(Mono.empty());
 
         Mono<ReportDto> resultMono = reportService.getReportById(testReportId);
 
@@ -144,7 +144,7 @@ class ReportServiceTest {
                 .expectErrorMatches(throwable -> throwable instanceof ResourceNotFoundException &&
                         throwable.getMessage().contains("Report not found with ID: " + testReportId))
                 .verify();
-        verify(firebaseService, times(1)).getReportById(testReportId);
+        verify(reportRepository, times(1)).findById(testReportId);
     }
 
     // GENERATE PDF TEST (unit test for the helper method)

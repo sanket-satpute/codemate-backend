@@ -1,24 +1,27 @@
 package com.codescope.backend.realtime.websocket;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+/**
+ * Publishes events to WebSocket subscribers via the reactive WebSocket handler.
+ * Replaces the servlet-based SimpMessagingTemplate approach.
+ */
 @Service
 @RequiredArgsConstructor
 public class WebSocketEventPublisher {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final ReactiveWebSocketHandler webSocketHandler;
 
     public void publishToProject(String projectId, WebSocketEventPayload payload) {
-        messagingTemplate.convertAndSend("/topic/jobs/" + projectId, payload);
+        webSocketHandler.broadcast("/topic/jobs/" + projectId, payload);
     }
 
     public void publishToJob(String projectId, String jobId, WebSocketEventPayload payload) {
-        messagingTemplate.convertAndSend("/topic/jobs/" + projectId + "/" + jobId, payload);
+        webSocketHandler.broadcast("/topic/jobs/" + projectId + "/" + jobId, payload);
     }
 
     public void publishNotification(WebSocketEventPayload payload) {
-        messagingTemplate.convertAndSend("/topic/notifications", payload);
+        webSocketHandler.broadcast("/topic/notifications", payload);
     }
 }

@@ -34,4 +34,11 @@ build/
 
 ### Environment ###
 .env
+.env.local
 src/main/resources/firebase-service-account.json
+src/main/resources/application-dev.yml
+
+### Logs ###
+*.log
+*.txt
+!README*.txt

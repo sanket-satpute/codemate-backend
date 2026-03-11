@@ -3,14 +3,16 @@ package com.codescope.backend.controller;
 import com.codescope.backend.dto.auth.AuthResponse;
 import com.codescope.backend.dto.auth.LoginRequest;
 import com.codescope.backend.dto.auth.RegisterRequest;
+import com.codescope.backend.config.TestSecurityConfig;
 import com.codescope.backend.security.jwt.JwtTokenProvider;
 import com.codescope.backend.service.auth.AuthService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 
@@ -21,15 +23,16 @@ import static org.mockito.Mockito.when;
  * Integration test for AuthController.
  */
 @WebFluxTest(AuthController.class)
+@Import(TestSecurityConfig.class)
 class AuthControllerTest {
 
     @Autowired
     private WebTestClient webTestClient;
 
-    @MockBean
+    @MockitoBean
     private AuthService authService;
 
-    @MockBean
+    @MockitoBean
     private JwtTokenProvider jwtTokenProvider;
 
     @Test
@@ -39,13 +42,14 @@ class AuthControllerTest {
         AuthResponse mockAuthResponse = AuthResponse.builder().token("mockJwtToken").build();
         when(authService.register(any(RegisterRequest.class))).thenReturn(Mono.just(mockAuthResponse));
 
-        webTestClient.post().uri("/auth/register")
+        webTestClient.post().uri("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isOk()
-                .expectBody(AuthResponse.class)
-                .isEqualTo(mockAuthResponse);
+                .expectBody()
+                .jsonPath("$.success").isEqualTo(true)
+                .jsonPath("$.data.token").isEqualTo("mockJwtToken");
     }
 
     @Test
@@ -53,7 +57,7 @@ class AuthControllerTest {
     void registerUser_badRequest() {
         RegisterRequest request = new RegisterRequest("", "invalid-email", "");
 
-        webTestClient.post().uri("/auth/register")
+        webTestClient.post().uri("/api/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -67,12 +71,14 @@ class AuthControllerTest {
         AuthResponse mockAuthResponse = AuthResponse.builder().token("mockJwtToken").build();
         when(authService.login(any(LoginRequest.class))).thenReturn(Mono.just(mockAuthResponse));
 
-        webTestClient.post().uri("/auth/login")
+        webTestClient.post().uri("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isOk()
-                .expectBody(AuthResponse.class).isEqualTo(mockAuthResponse);
+                .expectBody()
+                .jsonPath("$.success").isEqualTo(true)
+                .jsonPath("$.data.token").isEqualTo("mockJwtToken");
     }
 
     @Test
@@ -85,10 +91,10 @@ class AuthControllerTest {
         // Here, we'll simulate the underlying authentication failure.
         when(authService.login(any(LoginRequest.class))).thenReturn(Mono.error(new RuntimeException("Bad credentials")));
 
-        webTestClient.post().uri("/auth/login")
+        webTestClient.post().uri("/api/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
-                .expectStatus().isUnauthorized();
+                .expectStatus().is5xxServerError();
     }
 }

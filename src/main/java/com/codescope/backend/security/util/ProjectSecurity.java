@@ -14,7 +14,9 @@ public class ProjectSecurity {
 
     public Mono<Boolean> isOwner(Authentication authentication, String projectId) {
         String ownerId = authentication.getName(); // Assuming username is the ownerId (email)
-        return projectRepository.findByIdAndOwnerId(projectId, ownerId)
-                .hasElement(); // Check if a project exists, returns Mono<Boolean>
+        return projectRepository.findById(projectId)
+                .switchIfEmpty(projectRepository.findByProjectId(projectId))
+                .filter(project -> ownerId.equals(project.getOwnerId()))
+                .hasElement();
     }
 }

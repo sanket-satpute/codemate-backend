@@ -21,6 +21,9 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.support.WebExchangeBindException;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.server.ServerWebInputException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -63,6 +66,29 @@ public class GlobalExceptionHandler {
                 errors.put(error.getField(), error.getDefaultMessage()));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new BaseResponse<>(false, "Validation failed", errors));
+    }
+
+    @ExceptionHandler(WebExchangeBindException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<BaseResponse<Map<String, String>>> handleWebExchangeBindException(WebExchangeBindException ex) {
+        Map<String, String> errors = new HashMap<>();
+        ex.getBindingResult().getFieldErrors().forEach(error ->
+                errors.put(error.getField(), error.getDefaultMessage()));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new BaseResponse<>(false, "Validation failed", errors));
+    }
+
+    @ExceptionHandler(ServerWebInputException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<BaseResponse<String>> handleServerWebInputException(ServerWebInputException ex) {
+        BaseResponse<String> response = BaseResponse.error(ex.getReason() != null ? ex.getReason() : ex.getMessage());
+        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<BaseResponse<String>> handleResponseStatusException(ResponseStatusException ex) {
+        BaseResponse<String> response = BaseResponse.error(ex.getReason() != null ? ex.getReason() : ex.getMessage());
+        return new ResponseEntity<>(response, ex.getStatusCode());
     }
 
     @ExceptionHandler(FileUploadException.class)

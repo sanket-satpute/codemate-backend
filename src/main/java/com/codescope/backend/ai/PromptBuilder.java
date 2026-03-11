@@ -4,6 +4,7 @@ import com.codescope.backend.ai.exception.PromptGenerationException;
 import com.codescope.backend.analysisjob.enums.JobType;
 import com.codescope.backend.project.model.Project;
 import com.codescope.backend.upload.model.ProjectFile;
+import com.codescope.backend.ai.model.FileChunk;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -85,41 +86,43 @@ public class PromptBuilder {
             Provide the response in a structured JSON format, including a summary, a list of issues, suggestions for improvement, and an overall risk level (LOW, MEDIUM, HIGH).
             """;
 
-    public String buildPrompt(JobType jobType, Project project, List<ProjectFile> projectFiles) {
-        String filesContent = projectFiles.stream()
-                .map(file -> String.format("File: %s (Type: %s)\nContent:\n```\n%s\n```",
-                        file.getFilename(), file.getFileType(), readFileContent(file.getFilepath())))
-                .collect(Collectors.joining("\n\n---\n\n"));
+    public String buildPrompt(JobType jobType, Project project, FileChunk chunk) {
+        String chunkContext = "";
+        if (chunk.getTotalChunks() > 1) {
+            chunkContext = String.format("Note: This is chunk %d out of %d for the project analysis.\n\n",
+                    chunk.getChunkNumber(), chunk.getTotalChunks());
+        }
+
+        String filesContent = chunk.getContent();
 
         return switch (jobType) {
             case PROJECT_ANALYSIS -> String.format(PROJECT_ANALYSIS_TEMPLATE,
-                    project.getName(), project.getDescription(), filesContent);
+                    project.getName(), project.getDescription(), chunkContext + filesContent);
             case AI_REVIEW -> {
-                if (projectFiles.isEmpty()) {
-                    throw new PromptGenerationException("Code review requires at least one file.");
-                }
-                // For simplicity, taking the first file for code review.
-                // In a real scenario, this might be a specific file or a diff.
-                ProjectFile fileToReview = projectFiles.get(0);
-                String fileExtension = getFileExtension(fileToReview.getFilename());
+                // For review, we ideally want smaller specific snippets, but adhering to the
+                // old structure
                 yield String.format(CODE_REVIEW_TEMPLATE,
-                        fileToReview.getFilename(), fileExtension, readFileContent(fileToReview.getFilepath()));
+                        chunk.getFilePath(), "txt", chunkContext + filesContent);
             }
             case ARCHITECTURE_SCAN -> String.format(ARCHITECTURE_SCAN_TEMPLATE,
-                    project.getName(), project.getDescription(), filesContent);
+                    project.getName(), project.getDescription(), chunkContext + filesContent);
             case BUG_SCAN -> String.format(BUG_SCAN_TEMPLATE,
-                    project.getName(), project.getDescription(), filesContent);
+                    project.getName(), project.getDescription(), chunkContext + filesContent);
             default -> throw new PromptGenerationException("Unsupported job type for prompt generation: " + jobType);
         };
     }
 
-    public String buildChatPrompt(String projectContext, List<com.codescope.backend.chat.ChatMessage> chatHistory, String userMessage) {
+    public String buildChatPrompt(String projectContext, List<com.codescope.backend.chat.ChatMessage> chatHistory,
+            String userMessage) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append("Project Context: ").append(projectContext).append("\n\n");
-        prompt.append("Chat History:\n");
-        chatHistory.forEach(msg -> prompt.append(msg.getSender()).append(": ").append(msg.getMessage()).append("\n"));
+        prompt.append("Project Context:\n").append(projectContext).append("\n\n");
+        if (!chatHistory.isEmpty()) {
+            prompt.append("Chat History:\n");
+            chatHistory.forEach(msg -> prompt.append(msg.getSender()).append(": ").append(msg.getMessage()).append("\n"));
+            prompt.append("\n");
+        }
         prompt.append("User: ").append(userMessage).append("\n\n");
-        prompt.append("Please provide a concise and helpful response based on the above context and conversation history.");
+        prompt.append("Provide a concise and helpful response based on the project files and conversation above. Use markdown formatting.");
         return prompt.toString();
     }
 

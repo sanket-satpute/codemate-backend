@@ -1,16 +1,6 @@
 package com.codescope.backend.security.jwt;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Component;
-
-import java.security.Key;
-import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.MalformedJwtException;
@@ -38,10 +28,10 @@ public class JwtTokenProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(JwtTokenProvider.class);
 
-    @Value("${jwt.secret:defaultSecretKeyForDevelopmentAndTestingWhichIsLongEnoughForHS256Algorithm}") // Provide a default for development
+    @Value("${jwt.secret}")
     private String secret;
 
-    @Value("${jwt.expiration-ms:86400000}") // Default to 24 hours
+    @Value("${jwt.expiration:86400000}")
     private long jwtExpiration;
 
     public String extractUsername(String token) {
@@ -65,8 +55,7 @@ public class JwtTokenProvider {
 
     public String generateToken(
             Map<String, Object> extraClaims,
-            UserDetails userDetails
-    ) {
+            UserDetails userDetails) {
         return Jwts
                 .builder()
                 .setClaims(extraClaims)
@@ -117,11 +106,19 @@ public class JwtTokenProvider {
 
     private Key getSignInKey() {
         if (secret == null || secret.isEmpty()) {
-            throw new IllegalStateException("JWT secret is not configured. Please set 'jwt.secret' in application.properties or application.yml with a Base64 encoded string of at least 32 bytes.");
+            throw new IllegalStateException(
+                    "JWT secret is not configured. Please set 'jwt.secret' in application.properties or application.yml with a Base64 encoded string of at least 32 bytes.");
         }
-        byte[] keyBytes = Decoders.BASE64.decode(secret);
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(secret);
+        } catch (Exception e) {
+            keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
         if (keyBytes.length < 32) {
-            throw new IllegalStateException("JWT secret key is too short. It must be at least 32 bytes (256 bits) for HS256 algorithm. Current length: " + keyBytes.length + " bytes.");
+            throw new IllegalStateException(
+                    "JWT secret key is too short. It must be at least 32 bytes (256 bits) for HS256 algorithm. Current length: "
+                            + keyBytes.length + " bytes.");
         }
         return Keys.hmacShaKeyFor(keyBytes);
     }

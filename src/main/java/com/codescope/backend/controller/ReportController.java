@@ -32,7 +32,8 @@ public class ReportController {
 
     @PostMapping
     @PreAuthorize("isAuthenticated()")
-    public Mono<ResponseEntity<BaseResponse<ReportCreationResponseDto>>> createDummyReport(@RequestBody(required = false) Report report) {
+    public Mono<ResponseEntity<BaseResponse<ReportCreationResponseDto>>> createDummyReport(
+            @RequestBody(required = false) Report report) {
         log.info("Received request to create dummy report.");
         Report finalReport = (report != null) ? report : new Report();
         if (finalReport.getReportId() == null || finalReport.getReportId().isEmpty()) {
@@ -44,16 +45,16 @@ public class ReportController {
             finalReport.setDetails(List.of(
                     "Code successfully analyzed.",
                     "No major vulnerabilities found.",
-                    "Performance optimizations suggested."
-            ));
+                    "Performance optimizations suggested."));
             finalReport.setFindings(List.of(
                     Map.of("type", "INFO", "message", "Build passed successfully."),
-                    Map.of("type", "WARNING", "message", "Minor unused imports found.")
-            ));
+                    Map.of("type", "WARNING", "message", "Minor unused imports found.")));
         }
 
         return reportService.saveReport(finalReport)
-                .map(reportId -> ResponseEntity.ok(BaseResponse.success(new ReportCreationResponseDto(reportId, "Report saved successfully"), "Report saved successfully!")))
+                .map(reportId -> ResponseEntity
+                        .ok(BaseResponse.success(new ReportCreationResponseDto(reportId, "Report saved successfully"),
+                                "Report saved successfully!")))
                 .onErrorResume(e -> {
                     log.error("Error creating dummy report: {}", e.getMessage());
                     return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -72,6 +73,26 @@ public class ReportController {
                     return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                             .body(BaseResponse.error("Failed to retrieve reports: " + e.getMessage())));
                 });
+
+    }
+
+    @GetMapping("/{reportId}")
+    @PreAuthorize("isAuthenticated()")
+    public Mono<ResponseEntity<BaseResponse<ReportDto>>> getReportById(@PathVariable String reportId) {
+        log.info("Fetching report for ID: {}", reportId);
+        return reportService.getReportById(reportId)
+                .map(report -> ResponseEntity.ok(BaseResponse.success(report, "Report retrieved successfully")))
+                .switchIfEmpty(Mono.error(new ResourceNotFoundException("Report not found with ID: " + reportId)))
+                .onErrorResume(ResourceNotFoundException.class, e -> {
+                    log.warn("Report not found with ID {}: {}", reportId, e.getMessage());
+                    return Mono.just(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(BaseResponse.error("Report not found with ID: " + reportId)));
+                })
+                .onErrorResume(e -> {
+                    log.error("Error fetching report for ID {}: {}", reportId, e.getMessage());
+                    return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .body(BaseResponse.error("Failed to retrieve report: " + e.getMessage())));
+                });
     }
 
     @GetMapping("/{reportId}/download")
@@ -83,14 +104,17 @@ public class ReportController {
                 .flatMap(reportDto -> {
                     try {
                         byte[] pdfBytes = reportService.generateReportPdf(reportDto);
-                        BaseResponse<byte[]> successResponse = BaseResponse.success(pdfBytes, "PDF report generated successfully");
+                        BaseResponse<byte[]> successResponse = BaseResponse.success(pdfBytes,
+                                "PDF report generated successfully");
                         return Mono.just(ResponseEntity.ok()
-                                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"report_" + reportId + ".pdf\"")
+                                .header(HttpHeaders.CONTENT_DISPOSITION,
+                                        "attachment; filename=\"report_" + reportId + ".pdf\"")
                                 .contentType(MediaType.APPLICATION_PDF)
                                 .body(successResponse));
                     } catch (Exception e) {
                         log.error("Error generating PDF for report ID {}: {}", reportId, e.getMessage());
-                        BaseResponse<byte[]> errorResponse = BaseResponse.error("Failed to generate PDF: " + e.getMessage());
+                        BaseResponse<byte[]> errorResponse = BaseResponse
+                                .error("Failed to generate PDF: " + e.getMessage());
                         return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                                 .body(errorResponse));
                     }
@@ -102,8 +126,10 @@ public class ReportController {
                             .body(errorResponse));
                 })
                 .onErrorResume(e -> {
-                    log.error("An unexpected error occurred while downloading PDF for report ID {}: {}", reportId, e.getMessage());
-                    BaseResponse<byte[]> errorResponse = BaseResponse.error("An unexpected error occurred while downloading PDF: " + e.getMessage());
+                    log.error("An unexpected error occurred while downloading PDF for report ID {}: {}", reportId,
+                            e.getMessage());
+                    BaseResponse<byte[]> errorResponse = BaseResponse
+                            .error("An unexpected error occurred while downloading PDF: " + e.getMessage());
                     return Mono.just(ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                             .body(errorResponse));
                 });
