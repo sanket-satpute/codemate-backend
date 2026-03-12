@@ -182,11 +182,14 @@ public class ChatService {
         }
 
         private String readFileContent(ProjectFile file) {
-                // Try local file first
+                String cloudinaryUrl = file.getCloudinaryUrl();
+                if (cloudinaryUrl != null && !cloudinaryUrl.isBlank()) {
+                        return downloadAndExtract(cloudinaryUrl, file.getFilename());
+                }
+
                 String filePath = file.getFilepath();
                 if (filePath != null && !filePath.isBlank()) {
                         try {
-                                // Handle URL-style paths like "/uploads/uuid_file.csv"
                                 String cleanPath = filePath;
                                 if (cleanPath.startsWith("/uploads/")) {
                                         cleanPath = "uploads/" + cleanPath.substring("/uploads/".length());
@@ -207,12 +210,6 @@ public class ChatService {
                         } catch (Exception e) {
                                 log.warn("Failed to read local file: {}", filePath, e);
                         }
-                }
-
-                // Fallback: download from Cloudinary URL
-                String cloudinaryUrl = file.getCloudinaryUrl();
-                if (cloudinaryUrl != null && !cloudinaryUrl.isBlank()) {
-                        return downloadAndExtract(cloudinaryUrl, file.getFilename());
                 }
 
                 return "// File content not available";

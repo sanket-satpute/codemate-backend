@@ -136,7 +136,7 @@ public class UploadController {
             return Mono.error(new InvalidInputException("Unsupported file type. Allowed types are: " + String.join(", ", ALLOWED_FILE_EXTENSIONS) + "."));
         }
 
-        return fileStorageService.processAndStoreFile(file)
+                return fileStorageService.processAndStoreFile(file, projectId)
                 .flatMap(processedFiles -> {
                     if (processedFiles.isEmpty()) {
                         return Mono.error(new InvalidInputException("No supported files found or extracted from upload"));
@@ -152,7 +152,9 @@ public class UploadController {
                             .filter(Objects::nonNull)
                             .collect(Collectors.joining("\n\n--- FILE SEPARATOR ---\n\n"));
 
-                    ProjectFile projectFile = convertToProjectFile(processedFiles.get(0), projectId);
+                    List<ProjectFile> projectFiles = processedFiles.stream()
+                            .map(dto -> convertToProjectFile(dto, projectId))
+                            .collect(Collectors.toList());
                     return projectRepository.findByProjectId(projectId)
                             .switchIfEmpty(projectRepository.findById(projectId))
                             .switchIfEmpty(Mono.error(new InvalidInputException("Project not found with ID: " + projectId)))
@@ -160,7 +162,7 @@ public class UploadController {
                                 List<ProjectFile> updatedFiles = project.getFiles() == null
                                         ? new ArrayList<>()
                                         : new ArrayList<>(project.getFiles());
-                                updatedFiles.add(projectFile);
+                                updatedFiles.addAll(projectFiles);
                                 project.setFiles(updatedFiles);
                                 project.setLastCorrectedAt(LocalDateTime.now());
                                 project.setLastCorrectedByModel("AI_MODEL_UNKNOWN");
@@ -200,7 +202,11 @@ public class UploadController {
         projectFile.setProjectId(projectId);
         projectFile.setFilename(dto.getFileName());
         projectFile.setFileType(dto.getFileType());
-        projectFile.setFilepath(dto.getUrl());
+                projectFile.setFilepath(null);
+                projectFile.setCloudinaryUrl(dto.getUrl());
+                projectFile.setCloudinaryPublicId(dto.getCloudinaryPublicId());
+                projectFile.setFileSize(dto.getFileSize());
+                projectFile.setFileExtension(MultipartFileUtil.getFileExtension(dto.getFileName()));
         projectFile.setUploadedAt(LocalDateTime.now());
         return projectFile;
     }

@@ -2,6 +2,7 @@ package com.codescope.backend.security.config;
 
 import com.codescope.backend.security.jwt.JwtTokenProvider; // Import JwtTokenProvider
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -23,13 +24,15 @@ import org.springframework.context.annotation.Primary; // Moved import to correc
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebFluxSecurity
 @RequiredArgsConstructor // Use Lombok's @RequiredArgsConstructor for constructor injection
 public class SecurityConfig {
 
-    private static final String ORIGIN_LINK = "http://localhost:4200"; // Frontend origin for CORS
+        @Value("${frontend.origins:${frontend.origin:http://localhost:4200}}")
+        private String frontendOrigins;
 
     private final ReactiveUserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
@@ -124,7 +127,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of(ORIGIN_LINK)); // Explicitly allow frontend origin
+        configuration.setAllowedOrigins(Arrays.stream(frontendOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .collect(Collectors.toList()));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

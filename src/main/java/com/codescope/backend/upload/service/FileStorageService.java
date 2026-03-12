@@ -11,15 +11,14 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.http.codec.multipart.FilePart; // Not used but might be from previous changes
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ServerWebExchange; // Not used but might be from previous changes
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
@@ -27,13 +26,18 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
 import com.codescope.backend.dto.upload.FileDocumentDto;
+import com.codescope.backend.service.CloudinaryService;
 import com.codescope.backend.utils.MultipartFileUtil;
 import lombok.extern.slf4j.Slf4j;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +49,7 @@ public class FileStorageService {
 
     private final ProjectFileRepository projectFileRepository;
     private final ProjectRepository projectRepository; // To validate projectId
+    private final CloudinaryService cloudinaryService;
 
     private final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     private final List<String> ALLOWED_FILE_TYPES = List.of(
@@ -100,35 +105,103 @@ public class FileStorageService {
                 });
     }
 
-    public Mono<List<FileDocumentDto>> processAndStoreFile(MultipartFile file) {
+    public Mono<List<FileDocumentDto>> processAndStoreFile(MultipartFile file, String projectId) {
         String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
         String fileExtension = MultipartFileUtil.getFileExtension(originalFilename);
-        String fileType = file.getContentType();
+        String fileType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        String cloudinaryFolder = "codescope/uploads/" + projectId;
 
-        return Mono.fromCallable(() -> {
-            Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
-            Files.createDirectories(uploadPath);
-
-            if (fileType != null && (fileType.equals("application/zip")
-                    || fileType.equals("application/x-zip-compressed") || fileExtension.equals("zip"))) {
-                log.info("Processing zip file: {}", originalFilename);
-                return MultipartFileUtil.extractZipContent(file.getInputStream(), uploadPath, originalFilename);
-            }
-
-            String uniqueFilename = UUID.randomUUID() + "_" + originalFilename;
-            Path targetLocation = uploadPath.resolve(uniqueFilename);
-            Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
-            String content = MultipartFileUtil.extractContent(file.getInputStream(), fileExtension);
-            String url = UriComponentsBuilder.fromPath("/uploads/")
-                    .path(uniqueFilename)
-                    .toUriString();
-
-            return List.of(new FileDocumentDto(originalFilename, fileType, content, url));
-        }).onErrorResume(IOException.class, e -> {
+        return Mono.fromCallable(file::getBytes)
+                .flatMap(bytes -> {
+                    if (isZipUpload(fileType, fileExtension)) {
+                        log.info("Processing zip file via Cloudinary: {}", originalFilename);
+                        return processZipUpload(bytes, originalFilename, cloudinaryFolder);
+                    }
+                    return uploadDocument(bytes, originalFilename, fileType, fileExtension, cloudinaryFolder)
+                            .map(List::of);
+                }).onErrorResume(IOException.class, e -> {
             log.error("Failed to process and store file: {}", originalFilename, e);
             return Mono.error(new FileUploadException("Failed to process and store file: " + originalFilename, e));
         });
+    }
+
+    private boolean isZipUpload(String fileType, String fileExtension) {
+        return "application/zip".equals(fileType)
+                || "application/x-zip-compressed".equals(fileType)
+                || "zip".equals(fileExtension);
+    }
+
+    private Mono<List<FileDocumentDto>> processZipUpload(byte[] zipBytes, String originalFilename, String cloudinaryFolder) {
+        return Mono.fromCallable(() -> readZipEntries(zipBytes, originalFilename))
+                .flatMapMany(Flux::fromIterable)
+                .flatMap(entry -> uploadDocument(entry.bytes(), entry.filename(), entry.fileType(), entry.fileExtension(),
+                        cloudinaryFolder))
+                .collectList();
+    }
+
+    private List<ZipUploadEntry> readZipEntries(byte[] zipBytes, String originalFilename) throws IOException {
+        List<ZipUploadEntry> extractedFiles = new ArrayList<>();
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            ZipEntry zipEntry = zis.getNextEntry();
+            while (zipEntry != null) {
+                if (!zipEntry.isDirectory()) {
+                    String entryName = StringUtils.cleanPath(zipEntry.getName());
+                    String[] pathParts = entryName.split("[\\\\/]");
+                    String baseFilename = pathParts[pathParts.length - 1];
+                    String extension = MultipartFileUtil.getFileExtension(baseFilename);
+
+                    if (MultipartFileUtil.ALLOWED_FILE_EXTENSIONS.contains(extension)) {
+                        byte[] contentBytes = zis.readAllBytes();
+                        extractedFiles.add(new ZipUploadEntry(
+                                baseFilename,
+                                detectContentType(extension),
+                                extension,
+                                contentBytes));
+                        log.info("Prepared supported file {} from zip {} for Cloudinary upload", baseFilename,
+                                originalFilename);
+                    } else {
+                        log.debug("Skipped unsupported file {} from zip {}", baseFilename, originalFilename);
+                    }
+                }
+                zis.closeEntry();
+                zipEntry = zis.getNextEntry();
+            }
+        }
+        return extractedFiles;
+    }
+
+    private Mono<FileDocumentDto> uploadDocument(byte[] bytes, String filename, String fileType, String fileExtension,
+            String cloudinaryFolder) {
+        return Mono.fromCallable(() -> MultipartFileUtil.extractContent(new ByteArrayInputStream(bytes), fileExtension))
+                .flatMap(content -> cloudinaryService.uploadBytes(bytes, filename, cloudinaryFolder)
+                        .map(result -> toFileDocumentDto(filename, fileType, content, bytes.length, result)));
+    }
+
+    private FileDocumentDto toFileDocumentDto(String filename, String fileType, String content, int size,
+            Map<String, Object> uploadResult) {
+        return new FileDocumentDto(
+                filename,
+                fileType,
+                content,
+                (String) uploadResult.get("secure_url"),
+                (String) uploadResult.get("public_id"),
+                ((Number) uploadResult.getOrDefault("bytes", size)).longValue());
+    }
+
+    private String detectContentType(String extension) {
+        return switch (extension) {
+            case "json" -> "application/json";
+            case "xml" -> "application/xml";
+            case "html" -> "text/html";
+            case "css" -> "text/css";
+            case "js" -> "application/javascript";
+            case "csv" -> "text/csv";
+            case "yml", "yaml", "txt", "md", "java", "py", "ts", "tsx", "jsx", "properties", "sql" -> "text/plain";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private record ZipUploadEntry(String filename, String fileType, String fileExtension, byte[] bytes) {
     }
 
     public Flux<FileUploadResponseDTO> listProjectFiles(String projectId) {

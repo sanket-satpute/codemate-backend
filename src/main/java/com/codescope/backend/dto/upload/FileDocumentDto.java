@@ -6,12 +6,21 @@ public class FileDocumentDto {
     private String fileType;
     private String content;
     private String url;
+    private String cloudinaryPublicId;
+    private Long fileSize;
 
     public FileDocumentDto(String fileName, String fileType, String content, String url) {
+        this(fileName, fileType, content, url, null, null);
+    }
+
+    public FileDocumentDto(String fileName, String fileType, String content, String url, String cloudinaryPublicId,
+            Long fileSize) {
         this.fileName = fileName;
         this.fileType = fileType;
         this.content = content;
         this.url = url;
+        this.cloudinaryPublicId = cloudinaryPublicId;
+        this.fileSize = fileSize;
     }
 
     // Getters and Setters
@@ -45,5 +54,21 @@ public class FileDocumentDto {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public String getCloudinaryPublicId() {
+        return cloudinaryPublicId;
+    }
+
+    public void setCloudinaryPublicId(String cloudinaryPublicId) {
+        this.cloudinaryPublicId = cloudinaryPublicId;
+    }
+
+    public Long getFileSize() {
+        return fileSize;
+    }
+
+    public void setFileSize(Long fileSize) {
+        this.fileSize = fileSize;
     }
 }

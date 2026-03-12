@@ -94,24 +94,6 @@ public class ChunkingService {
     }
 
     private String readFileContent(ProjectFile file) {
-        // Try local file first
-        String filepath = file.getFilepath();
-        if (filepath != null && !filepath.isBlank()) {
-            // Handle URL-style paths like /uploads/uuid_file.csv
-            if (filepath.startsWith("/uploads/")) {
-                filepath = filepath.substring(1); // strip leading /
-            }
-            Path path = Paths.get(filepath);
-            if (Files.exists(path)) {
-                try {
-                    return fileContentExtractor.extract(path);
-                } catch (Exception e) {
-                    log.warn("Failed to extract local file {}: {}", filepath, e.getMessage());
-                }
-            }
-        }
-
-        // Fallback: download from Cloudinary
         String url = file.getCloudinaryUrl();
         if (url != null && !url.isBlank()) {
             try {
@@ -124,6 +106,21 @@ public class ChunkingService {
                 return content;
             } catch (Exception e) {
                 log.warn("Failed to download from Cloudinary for {}: {}", file.getFilename(), e.getMessage());
+            }
+        }
+
+        String filepath = file.getFilepath();
+        if (filepath != null && !filepath.isBlank()) {
+            if (filepath.startsWith("/uploads/")) {
+                filepath = filepath.substring(1);
+            }
+            Path path = Paths.get(filepath);
+            if (Files.exists(path)) {
+                try {
+                    return fileContentExtractor.extract(path);
+                } catch (Exception e) {
+                    log.warn("Failed to extract local file {}: {}", filepath, e.getMessage());
+                }
             }
         }
 

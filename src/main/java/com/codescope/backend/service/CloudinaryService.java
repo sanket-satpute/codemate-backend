@@ -33,18 +33,22 @@ public class CloudinaryService {
                     byte[] bytes = new byte[dataBuffer.readableByteCount()];
                     dataBuffer.read(bytes);
                     DataBufferUtils.release(dataBuffer);
-                    return Mono.fromCallable(() -> {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> result = cloudinary.uploader().upload(bytes, ObjectUtils.asMap(
-                                "resource_type", "raw",
-                                "folder", folder,
-                                "public_id", filename,
-                                "overwrite", true
-                        ));
-                        log.info("Uploaded to Cloudinary: {} → {}", filename, result.get("secure_url"));
-                        return result;
-                    }).subscribeOn(Schedulers.boundedElastic());
+                    return uploadBytes(bytes, filename, folder);
                 });
+    }
+
+    public Mono<Map<String, Object>> uploadBytes(byte[] bytes, String filename, String folder) {
+        return Mono.fromCallable(() -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = cloudinary.uploader().upload(bytes, ObjectUtils.asMap(
+                    "resource_type", "raw",
+                    "folder", folder,
+                    "public_id", filename,
+                    "overwrite", true
+            ));
+            log.info("Uploaded to Cloudinary: {} → {}", filename, result.get("secure_url"));
+            return result;
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     /**

@@ -70,7 +70,7 @@ class UploadControllerTest {
                 .projectId(projectId)
                 .build();
 
-        when(fileStorageService.processAndStoreFile(any()))
+        when(fileStorageService.processAndStoreFile(any(), anyString()))
                 .thenReturn(Mono.just(List.of(mockFileDocument)));
         when(projectRepository.findByProjectId(anyString())).thenReturn(Mono.just(Project.builder().build()));
         when(projectRepository.findById(anyString())).thenReturn(Mono.empty());
@@ -123,7 +123,7 @@ class UploadControllerTest {
         byte[] fileContent = new byte[100]; // Small file
         String projectId = "testProjectId";
 
-        when(fileStorageService.processAndStoreFile(any()))
+        when(fileStorageService.processAndStoreFile(any(), anyString()))
                 .thenReturn(Mono.error(new RuntimeException("Simulated file processing error")));
 
         MultipartBodyBuilder bodyBuilder = new MultipartBodyBuilder();

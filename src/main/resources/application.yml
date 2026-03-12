@@ -15,39 +15,23 @@ spring:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   codec:
     max-in-memory-size: 10MB # Increase buffer for large file uploads
-  data:
-    mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/codescope}
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-  datasource: # JPA Data Source (for ProjectRepository)
-    url: jdbc:h2:mem:codescope;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driverClassName: org.h2.Driver
-    username: sa
-    password: password
-  jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
-    hibernate:
-      ddl-auto: update
-    show-sql: true
 
 api:
   github:
-    key: ${GITHUB_AI_TOKEN:your_github_ai_token}
+    key: ${GITHUB_AI_TOKEN}
   gemini:
-    key: ${GEMINI_AI_TOKEN:your_gemini_ai_token}
+    key: ${GEMINI_AI_TOKEN}
   groq:
-    key: ${GROQ_AI_TOKEN:your_groq_ai_token}
+    key: ${GROQ_AI_TOKEN}
 
 # Spring AI Configuration
 
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 # Cloudinary Configuration
 cloudinary:
-  url: ${CLOUDINARY_URL:cloudinary://key:secret@cloud}
+  url: ${CLOUDINARY_URL}
 
 # AI Service Configuration (legacy providers)
 ai:
@@ -55,16 +39,13 @@ ai:
   huggingface:
     api:
       url: https://api-inference.huggingface.co/models
-      key: ${HUGGINGFACE_API_KEY:your_hugging_face_api_key}
+      key: ${HUGGINGFACE_API_KEY:}
     default-model: google/flan-t5-base
   openai:
     api:
       url: https://api.openai.com/v1/chat/completions
-      key: ${OPENAI_API_KEY:your_openai_api_key}
-    token: ${OPENAI_API_KEY:your_openai_api_key}
-  ollama:
-    base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
-    default-model: llama2
+      key: ${OPENAI_API_KEY:}
+    token: ${OPENAI_API_KEY:}
   provider:
     default: openai
   retry:
@@ -75,8 +56,11 @@ ai:
 file:
   upload-dir: uploads
 
+frontend:
+  origin: ${FRONTEND_ORIGIN:http://localhost:4200}
+
 jwt:
-  secret: ${JWT_SECRET:Y29kZXNjb3BlLWRldi1zZWNyZXQta2V5LXRoYXQtaXMtbG9uZy1lbm91Z2gtZm9yLWhzMjU2}
+  secret: ${JWT_SECRET}
   expiration: 3600000
 
 # Actuator / Health Checks
@@ -100,8 +84,8 @@ management:
 logging:
   level:
     root: INFO
-    com.codescope.backend: DEBUG
-    org.springframework.ai: DEBUG
+    com.codescope.backend: INFO
+    org.springframework.ai: INFO
 
 app:
   repositories:

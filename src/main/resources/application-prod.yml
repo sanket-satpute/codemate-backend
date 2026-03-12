@@ -1,8 +1,28 @@
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
   data:
+    mongodb:
+      uri: ${MONGODB_URI}
     redis:
-      host: redis
-      port: 6379
+      url: ${REDIS_URL:}
+      host: ${REDIS_HOST:}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+
+server:
+  port: ${PORT:8080}
+
+file:
+  upload-dir: /tmp/uploads
+
+frontend:
+  origins: ${FRONTEND_ORIGINS:https://codemate-five.vercel.app,https://codemate-git-main-ssatpute738-2203s-projects.vercel.app,https://codemate-78zgnunry-ssatpute738-2203s-projects.vercel.app}
 
 logging:
   level:
