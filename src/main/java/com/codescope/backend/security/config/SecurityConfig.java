@@ -34,6 +34,9 @@ public class SecurityConfig {
         @Value("${frontend.origins:${frontend.origin:http://localhost:4200}}")
         private String frontendOrigins;
 
+        @Value("${frontend.origin-patterns:}")
+        private String frontendOriginPatterns;
+
     private final ReactiveUserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider; // Inject JwtTokenProvider
@@ -127,15 +130,20 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.stream(frontendOrigins.split(","))
+                configuration.setAllowedOriginPatterns(buildOriginPatterns());
+                configuration.setAllowedOrigins(List.of());
+                configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                configuration.setAllowedHeaders(List.of("*"));
+                configuration.setAllowCredentials(true);
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+                source.registerCorsConfiguration("/**", configuration);
+                return source;
+        }
+
+        private List<String> buildOriginPatterns() {
+                return Arrays.stream((frontendOrigins + "," + frontendOriginPatterns).split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .collect(Collectors.toList()));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
     }
 }
