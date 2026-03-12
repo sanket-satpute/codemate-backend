@@ -7,12 +7,7 @@ spring:
     mongodb:
       uri: ${MONGODB_URI}
     redis:
-      host: ${REDIS_HOST:}
-      port: ${REDIS_PORT:6379}
-      username: ${REDIS_USERNAME:}
-      password: ${REDIS_PASSWORD:}
-      ssl:
-        enabled: ${REDIS_SSL_ENABLED:true}
+      url: ${REDIS_URL}
 
 server:
   port: ${PORT:8080}
