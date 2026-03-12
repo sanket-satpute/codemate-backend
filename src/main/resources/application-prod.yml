@@ -16,7 +16,7 @@ file:
   upload-dir: /tmp/uploads
 
 frontend:
-  origins: ${FRONTEND_ORIGINS:https://codemate-five.vercel.app,https://codemate-git-main-ssatpute738-2203s-projects.vercel.app,https://codemate-78zgnunry-ssatpute738-2203s-projects.vercel.app}
+  origins: ${FRONTEND_ORIGINS:${FRONTEND_ORIGIN:https://codemate-five.vercel.app,https://codemate-git-main-ssatpute738-2203s-projects.vercel.app,https://codemate-78zgnunry-ssatpute738-2203s-projects.vercel.app}}
 
 logging:
   level:
