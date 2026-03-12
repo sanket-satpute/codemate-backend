@@ -130,20 +130,21 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-                configuration.setAllowedOriginPatterns(buildOriginPatterns());
-                configuration.setAllowedOrigins(List.of());
-                configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-                configuration.setAllowedHeaders(List.of("*"));
-                configuration.setAllowCredentials(true);
-                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-                source.registerCorsConfiguration("/**", configuration);
-                return source;
-        }
+        configuration.setAllowedOriginPatterns(buildOriginPatterns());
+        configuration.setAllowedOrigins(List.of());
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
 
-        private List<String> buildOriginPatterns() {
-                return Arrays.stream((frontendOrigins + "," + frontendOriginPatterns).split(","))
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
+    }
+
+    private List<String> buildOriginPatterns() {
+        return Arrays.stream((frontendOrigins + "," + frontendOriginPatterns).split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList());
     }
 }
