@@ -147,6 +147,11 @@ public class UploadController {
                             .filter(Objects::nonNull)
                             .collect(Collectors.toList());
 
+                    List<String> fileRelativePaths = processedFiles.stream()
+                            .map(FileDocumentDto::getRelativePath)
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toList());
+
                     String concatenatedFileContent = processedFiles.stream()
                             .map(FileDocumentDto::getContent)
                             .filter(Objects::nonNull)
@@ -180,6 +185,7 @@ public class UploadController {
                                                     processedFiles.size(),
                                                     jobDto.getStatus().toString(),
                                                     cloudinaryUrls,
+                                                    fileRelativePaths,
                                                     "File uploaded and analysis initiated"
                                             ), "File uploaded and analysis initiated")))
                             )

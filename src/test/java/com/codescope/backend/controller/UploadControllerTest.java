@@ -96,6 +96,7 @@ class UploadControllerTest {
                 .jsonPath("$.data.projectId").isEqualTo(projectId)
                 .jsonPath("$.data.jobId").isEqualTo(jobId)
                 .jsonPath("$.data.status").isEqualTo("PENDING")
+                .jsonPath("$.data.fileRelativePaths[0]").isEqualTo(filename)
                 .jsonPath("$.data.filesProcessed").isEqualTo(1);
     }
 

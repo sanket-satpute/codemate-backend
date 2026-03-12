@@ -15,5 +15,6 @@ public class FileUploadResponseDto {
     private int filesProcessed;
     private String status;
     private List<String> fileUrls;
+    private List<String> fileRelativePaths;
     private String message;
 }

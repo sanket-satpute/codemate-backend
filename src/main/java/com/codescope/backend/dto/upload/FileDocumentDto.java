@@ -6,19 +6,26 @@ public class FileDocumentDto {
     private String fileType;
     private String content;
     private String url;
+    private String relativePath;
     private String cloudinaryPublicId;
     private Long fileSize;
 
     public FileDocumentDto(String fileName, String fileType, String content, String url) {
-        this(fileName, fileType, content, url, null, null);
+        this(fileName, fileType, content, url, fileName, null, null);
     }
 
     public FileDocumentDto(String fileName, String fileType, String content, String url, String cloudinaryPublicId,
             Long fileSize) {
+        this(fileName, fileType, content, url, fileName, cloudinaryPublicId, fileSize);
+    }
+
+    public FileDocumentDto(String fileName, String fileType, String content, String url, String relativePath,
+            String cloudinaryPublicId, Long fileSize) {
         this.fileName = fileName;
         this.fileType = fileType;
         this.content = content;
         this.url = url;
+        this.relativePath = relativePath;
         this.cloudinaryPublicId = cloudinaryPublicId;
         this.fileSize = fileSize;
     }
@@ -54,6 +61,14 @@ public class FileDocumentDto {
 
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    public String getRelativePath() {
+        return relativePath;
+    }
+
+    public void setRelativePath(String relativePath) {
+        this.relativePath = relativePath;
     }
 
     public String getCloudinaryPublicId() {

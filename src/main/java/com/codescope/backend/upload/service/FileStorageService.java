@@ -132,10 +132,11 @@ public class FileStorageService {
     }
 
     private Mono<List<FileDocumentDto>> processZipUpload(byte[] zipBytes, String originalFilename, String cloudinaryFolder) {
+        String zipFolder = buildZipCloudinaryFolder(cloudinaryFolder, originalFilename);
         return Mono.fromCallable(() -> readZipEntries(zipBytes, originalFilename))
                 .flatMapMany(Flux::fromIterable)
-                .flatMap(entry -> uploadDocument(entry.bytes(), entry.filename(), entry.fileType(), entry.fileExtension(),
-                        cloudinaryFolder))
+                .concatMap(entry -> uploadDocument(entry.bytes(), entry.relativePath(), entry.fileType(),
+                        entry.fileExtension(), zipFolder))
                 .collectList();
     }
 
@@ -145,22 +146,27 @@ public class FileStorageService {
             ZipEntry zipEntry = zis.getNextEntry();
             while (zipEntry != null) {
                 if (!zipEntry.isDirectory()) {
-                    String entryName = StringUtils.cleanPath(zipEntry.getName());
-                    String[] pathParts = entryName.split("[\\\\/]");
-                    String baseFilename = pathParts[pathParts.length - 1];
-                    String extension = MultipartFileUtil.getFileExtension(baseFilename);
+                    String relativePath = normalizeZipEntryPath(zipEntry.getName());
+                    if (relativePath == null) {
+                        log.warn("Skipped unsafe zip entry {} from zip {}", zipEntry.getName(), originalFilename);
+                        zis.closeEntry();
+                        zipEntry = zis.getNextEntry();
+                        continue;
+                    }
+
+                    String extension = MultipartFileUtil.getFileExtension(relativePath);
 
                     if (MultipartFileUtil.ALLOWED_FILE_EXTENSIONS.contains(extension)) {
                         byte[] contentBytes = zis.readAllBytes();
                         extractedFiles.add(new ZipUploadEntry(
-                                baseFilename,
+                                relativePath,
                                 detectContentType(extension),
                                 extension,
                                 contentBytes));
-                        log.info("Prepared supported file {} from zip {} for Cloudinary upload", baseFilename,
+                        log.info("Prepared supported file {} from zip {} for Cloudinary upload", relativePath,
                                 originalFilename);
                     } else {
-                        log.debug("Skipped unsupported file {} from zip {}", baseFilename, originalFilename);
+                        log.debug("Skipped unsupported file {} from zip {}", relativePath, originalFilename);
                     }
                 }
                 zis.closeEntry();
@@ -170,20 +176,22 @@ public class FileStorageService {
         return extractedFiles;
     }
 
-    private Mono<FileDocumentDto> uploadDocument(byte[] bytes, String filename, String fileType, String fileExtension,
+        private Mono<FileDocumentDto> uploadDocument(byte[] bytes, String filename, String fileType, String fileExtension,
             String cloudinaryFolder) {
         return Mono.fromCallable(() -> MultipartFileUtil.extractContent(new ByteArrayInputStream(bytes), fileExtension))
                 .flatMap(content -> cloudinaryService.uploadBytes(bytes, filename, cloudinaryFolder)
-                        .map(result -> toFileDocumentDto(filename, fileType, content, bytes.length, result)));
+                .map(result -> toFileDocumentDto(filename, fileType, content, filename, bytes.length, result)));
     }
 
-    private FileDocumentDto toFileDocumentDto(String filename, String fileType, String content, int size,
+        private FileDocumentDto toFileDocumentDto(String filename, String fileType, String content, String relativePath,
+            int size,
             Map<String, Object> uploadResult) {
         return new FileDocumentDto(
                 filename,
                 fileType,
                 content,
                 (String) uploadResult.get("secure_url"),
+            relativePath,
                 (String) uploadResult.get("public_id"),
                 ((Number) uploadResult.getOrDefault("bytes", size)).longValue());
     }
@@ -201,7 +209,31 @@ public class FileStorageService {
         };
     }
 
-    private record ZipUploadEntry(String filename, String fileType, String fileExtension, byte[] bytes) {
+    private String normalizeZipEntryPath(String entryName) {
+        String normalizedPath = StringUtils.cleanPath(entryName).replace('\\', '/');
+
+        if (!StringUtils.hasText(normalizedPath)
+                || normalizedPath.startsWith("/")
+                || normalizedPath.startsWith("../")
+                || normalizedPath.contains("/../")
+                || normalizedPath.equals("..")) {
+            return null;
+        }
+
+        return normalizedPath;
+    }
+
+    private String buildZipCloudinaryFolder(String cloudinaryFolder, String originalFilename) {
+        String zipFolderName = StringUtils.stripFilenameExtension(StringUtils.getFilename(originalFilename));
+        if (!StringUtils.hasText(zipFolderName)) {
+            return cloudinaryFolder + "/archive";
+        }
+
+        String sanitizedFolderName = zipFolderName.replaceAll("[\\\\/]+", "-").trim();
+        return cloudinaryFolder + "/" + sanitizedFolderName;
+    }
+
+    private record ZipUploadEntry(String relativePath, String fileType, String fileExtension, byte[] bytes) {
     }
 
     public Flux<FileUploadResponseDTO> listProjectFiles(String projectId) {
