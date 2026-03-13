@@ -10,17 +10,24 @@ import com.codescope.backend.project.repository.ProjectRepository;
 import com.codescope.backend.service.CloudinaryService;
 import com.codescope.backend.upload.model.ProjectFile;
 import com.codescope.backend.upload.repository.ProjectFileRepository;
+import com.codescope.backend.utils.MultipartFileUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.multipart.FilePart;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -70,37 +77,13 @@ public class ProjectService {
                         return Mono.just(savedProject);
                     }
 
-                    // Upload each file to Cloudinary in parallel, save ProjectFile records
-                    List<Mono<ProjectFile>> uploadMonos = files.stream()
+                    // Upload each file (extracting zips) to Cloudinary, save ProjectFile records
+                    List<Flux<ProjectFile>> uploadFluxes = files.stream()
                             .filter(Objects::nonNull)
-                            .map(filePart -> {
-                                String originalFilename = filePart.filename();
-                                String extension = getFileExtension(originalFilename);
-                                String contentType = filePart.headers().getContentType() != null
-                                        ? filePart.headers().getContentType().toString() : "application/octet-stream";
-
-                                return cloudinaryService.uploadFile(filePart, cloudinaryFolder)
-                                    .flatMap(result -> {
-                                        long fileSize = result.get("bytes") != null
-                                                ? ((Number) result.get("bytes")).longValue() : 0L;
-
-                                        ProjectFile pf = ProjectFile.builder()
-                                                .projectId(projectId)
-                                                .filename(originalFilename)
-                                                .fileSize(fileSize)
-                                                .fileType(contentType)
-                                                .fileExtension(extension)
-                                                .cloudinaryUrl((String) result.get("secure_url"))
-                                                .cloudinaryPublicId((String) result.get("public_id"))
-                                                .uploadedAt(LocalDateTime.now())
-                                                .build();
-
-                                        return projectFileRepository.save(pf);
-                                    });
-                            })
+                            .map(filePart -> processFilePart(filePart, projectId, cloudinaryFolder))
                             .collect(Collectors.toList());
 
-                    return Flux.merge(uploadMonos)
+                    return Flux.merge(uploadFluxes)
                             .collectList()
                             .flatMap(savedFiles -> {
                                 savedProject.setFiles(savedFiles);
@@ -168,36 +151,14 @@ public class ProjectService {
                 .flatMap(project -> {
                     String cloudinaryFolder = "codescope/projects/" + (project.getProjectId() != null ? project.getProjectId() : project.getId());
 
-                    List<Mono<ProjectFile>> uploadMonos = files.stream()
+                    String actualProjectId = project.getProjectId() != null ? project.getProjectId() : project.getId();
+
+                    List<Flux<ProjectFile>> uploadFluxes = files.stream()
                             .filter(Objects::nonNull)
-                            .map(filePart -> {
-                                String originalFilename = filePart.filename();
-                                String extension = getFileExtension(originalFilename);
-                                String contentType = filePart.headers().getContentType() != null
-                                        ? filePart.headers().getContentType().toString() : "application/octet-stream";
-
-                                return cloudinaryService.uploadFile(filePart, cloudinaryFolder)
-                                        .flatMap(result -> {
-                                            long fileSize = result.get("bytes") != null
-                                                    ? ((Number) result.get("bytes")).longValue() : 0L;
-
-                                            ProjectFile pf = ProjectFile.builder()
-                                                    .projectId(project.getProjectId() != null ? project.getProjectId() : project.getId())
-                                                    .filename(originalFilename)
-                                                    .fileSize(fileSize)
-                                                    .fileType(contentType)
-                                                    .fileExtension(extension)
-                                                    .cloudinaryUrl((String) result.get("secure_url"))
-                                                    .cloudinaryPublicId((String) result.get("public_id"))
-                                                    .uploadedAt(LocalDateTime.now())
-                                                    .build();
-
-                                            return projectFileRepository.save(pf);
-                                        });
-                            })
+                            .map(filePart -> processFilePart(filePart, actualProjectId, cloudinaryFolder))
                             .collect(Collectors.toList());
 
-                    return Flux.merge(uploadMonos)
+                    return Flux.merge(uploadFluxes)
                             .collectList()
                             .flatMap(savedFiles -> {
                                 List<ProjectFile> existing = project.getFiles() != null
@@ -353,6 +314,134 @@ public class ProjectService {
                 .fileTypeBreakdown(fileTypeBreakdown)
                 .files(fileInfoList)
                 .build();
+    }
+
+    // ─── Zip Extraction Support ──────────────────────────────────────────
+
+    private Flux<ProjectFile> processFilePart(FilePart filePart, String projectId, String cloudinaryFolder) {
+        String originalFilename = filePart.filename();
+        String extension = getFileExtension(originalFilename);
+        String contentType = filePart.headers().getContentType() != null
+                ? filePart.headers().getContentType().toString() : "application/octet-stream";
+
+        if (isZipFile(contentType, extension)) {
+            log.info("Detected zip upload '{}', extracting entries for project {}", originalFilename, projectId);
+            return DataBufferUtils.join(filePart.content())
+                    .flatMapMany(dataBuffer -> {
+                        byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                        dataBuffer.read(bytes);
+                        DataBufferUtils.release(dataBuffer);
+                        return extractAndUploadZipEntries(bytes, originalFilename, projectId, cloudinaryFolder);
+                    });
+        }
+
+        // Regular (non-zip) file
+        return cloudinaryService.uploadFile(filePart, cloudinaryFolder)
+                .flatMap(result -> {
+                    long fileSize = result.get("bytes") != null
+                            ? ((Number) result.get("bytes")).longValue() : 0L;
+                    ProjectFile pf = ProjectFile.builder()
+                            .projectId(projectId)
+                            .filename(originalFilename)
+                            .fileSize(fileSize)
+                            .fileType(contentType)
+                            .fileExtension(extension)
+                            .cloudinaryUrl((String) result.get("secure_url"))
+                            .cloudinaryPublicId((String) result.get("public_id"))
+                            .uploadedAt(LocalDateTime.now())
+                            .build();
+                    return projectFileRepository.save(pf);
+                })
+                .flux();
+    }
+
+    private boolean isZipFile(String contentType, String fileExtension) {
+        return "application/zip".equals(contentType)
+                || "application/x-zip-compressed".equals(contentType)
+                || "zip".equalsIgnoreCase(fileExtension);
+    }
+
+    private Flux<ProjectFile> extractAndUploadZipEntries(byte[] zipBytes, String zipFilename,
+                                                         String projectId, String cloudinaryFolder) {
+        String zipFolderName = StringUtils.stripFilenameExtension(StringUtils.getFilename(zipFilename));
+        String zipFolder = cloudinaryFolder + "/"
+                + (StringUtils.hasText(zipFolderName)
+                        ? zipFolderName.replaceAll("[\\\\/]+", "-").trim()
+                        : "archive");
+
+        return Mono.fromCallable(() -> readZipEntries(zipBytes, zipFilename))
+                .flatMapMany(Flux::fromIterable)
+                .concatMap(entry -> cloudinaryService.uploadBytes(entry.bytes(), entry.relativePath(), zipFolder)
+                        .flatMap(result -> {
+                            long fileSize = result.get("bytes") != null
+                                    ? ((Number) result.get("bytes")).longValue() : 0L;
+                            ProjectFile pf = ProjectFile.builder()
+                                    .projectId(projectId)
+                                    .filename(entry.relativePath())
+                                    .fileSize(fileSize)
+                                    .fileType(entry.fileType())
+                                    .fileExtension(entry.fileExtension())
+                                    .cloudinaryUrl((String) result.get("secure_url"))
+                                    .cloudinaryPublicId((String) result.get("public_id"))
+                                    .uploadedAt(LocalDateTime.now())
+                                    .build();
+                            return projectFileRepository.save(pf);
+                        }));
+    }
+
+    private List<ZipUploadEntry> readZipEntries(byte[] zipBytes, String zipFilename) throws IOException {
+        List<ZipUploadEntry> entries = new ArrayList<>();
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            ZipEntry zipEntry;
+            while ((zipEntry = zis.getNextEntry()) != null) {
+                if (!zipEntry.isDirectory()) {
+                    String relativePath = normalizeZipEntryPath(zipEntry.getName());
+                    if (relativePath == null) {
+                        log.warn("Skipped unsafe zip entry {} from zip {}", zipEntry.getName(), zipFilename);
+                        zis.closeEntry();
+                        continue;
+                    }
+                    String ext = getFileExtension(relativePath);
+                    if (MultipartFileUtil.ALLOWED_FILE_EXTENSIONS.contains(ext)) {
+                        byte[] contentBytes = zis.readAllBytes();
+                        entries.add(new ZipUploadEntry(relativePath, detectContentType(ext), ext, contentBytes));
+                        log.info("Prepared file {} from zip {}", relativePath, zipFilename);
+                    } else {
+                        log.debug("Skipped unsupported file {} from zip {}", relativePath, zipFilename);
+                    }
+                }
+                zis.closeEntry();
+            }
+        }
+        return entries;
+    }
+
+    private String normalizeZipEntryPath(String entryName) {
+        String normalized = StringUtils.cleanPath(entryName).replace('\\', '/');
+        if (!StringUtils.hasText(normalized)
+                || normalized.startsWith("/")
+                || normalized.startsWith("../")
+                || normalized.contains("/../")
+                || normalized.equals("..")) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private String detectContentType(String extension) {
+        return switch (extension) {
+            case "json" -> "application/json";
+            case "xml" -> "application/xml";
+            case "html" -> "text/html";
+            case "css" -> "text/css";
+            case "js" -> "application/javascript";
+            case "csv" -> "text/csv";
+            case "yml", "yaml", "txt", "md", "java", "py", "ts", "tsx", "jsx", "properties", "sql" -> "text/plain";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private record ZipUploadEntry(String relativePath, String fileType, String fileExtension, byte[] bytes) {
     }
 
     private String getFileExtension(String filename) {
