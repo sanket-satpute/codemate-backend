@@ -76,6 +76,7 @@ Important config lives in:
 Common values include:
 
 - `MONGODB_URI`
+- `MONGODB_PASSWORD`
 - `JWT_SECRET`
 - `CLOUDINARY_URL`
 - `OPENAI_API_KEY`
@@ -104,7 +105,8 @@ Recommended production defaults:
 - `SPRING_PROFILES_ACTIVE=prod`
 - `APP_REDIS_ENABLED=false`
 - `PROJECT_ID_BACKFILL_ENABLED=false`
-- Set `CLOUDINARY_URL`, `MONGODB_URI`, `JWT_SECRET`, and frontend origin variables explicitly on the host
+- Set `CLOUDINARY_URL`, `JWT_SECRET`, and frontend origin variables explicitly on the host
+- For MongoDB, either set a full `MONGODB_URI` or set `MONGODB_PASSWORD` and use the built-in Atlas URI template from `application-prod.yml`
 
 ## Notes
 

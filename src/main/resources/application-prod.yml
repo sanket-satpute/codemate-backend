@@ -1,7 +1,9 @@
 spring:
+  main:
+    lazy-initialization: true
   data:
     mongodb:
-      uri: ${MONGODB_URI}
+      uri: ${MONGODB_URI:mongodb+srv://codemate_db_user_sanket:${MONGODB_PASSWORD}@cluster0.9sqz4vx.mongodb.net/codescope?retryWrites=true&w=majority&appName=Cluster0}
 
 server:
   port: ${PORT:8080}
@@ -33,3 +35,9 @@ management:
       probes:
         enabled: true
         add-additional-paths: true
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
