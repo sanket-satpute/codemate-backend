@@ -72,6 +72,9 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
+        add-additional-paths: true
   metrics:
     tags:
       application: ${spring.application.name}
