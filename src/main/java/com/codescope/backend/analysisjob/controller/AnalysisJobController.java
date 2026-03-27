@@ -31,8 +31,7 @@ public class AnalysisJobController {
                         @PathVariable String projectId,
                         @Valid @RequestBody CreateJobRequestDTO request,
                         @AuthenticationPrincipal User user) {
-                String userId = user != null ? user.getId() : null;
-                return analysisJobService.createJob(projectId, request.getJobType(), resolveUsername(user), userId)
+                return analysisJobService.createJob(projectId, request.getJobType(), resolveUsername(user), resolveUserId(user))
                                 .map(job -> {
                                         return ResponseEntity.status(HttpStatus.CREATED)
                                                         .body(new BaseResponse<>(true,
@@ -84,5 +83,9 @@ public class AnalysisJobController {
 
         private String resolveUsername(User user) {
                 return user != null ? user.getUsername() : "system";
+        }
+
+        private String resolveUserId(User user) {
+                return user != null ? user.getId() : "system";
         }
 }

@@ -88,6 +88,8 @@ logging:
     org.springframework.ai: INFO
 
 app:
+  redis:
+    enabled: false
   repositories:
     enabled: true
 

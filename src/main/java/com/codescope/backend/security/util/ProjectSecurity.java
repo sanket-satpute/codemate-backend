@@ -14,9 +14,12 @@ public class ProjectSecurity {
 
     public Mono<Boolean> isOwner(Authentication authentication, String projectId) {
         String ownerId = authentication.getName(); // Assuming username is the ownerId (email)
-        return projectRepository.findById(projectId)
-                .switchIfEmpty(projectRepository.findByProjectId(projectId))
-                .filter(project -> ownerId.equals(project.getOwnerId()))
+        return safeLookup(projectRepository.findByProjectIdAndOwnerId(projectId, ownerId))
+                .switchIfEmpty(safeLookup(projectRepository.findByIdAndOwnerId(projectId, ownerId)))
                 .hasElement();
+    }
+
+    private Mono<com.codescope.backend.project.model.Project> safeLookup(Mono<com.codescope.backend.project.model.Project> lookup) {
+        return lookup != null ? lookup : Mono.empty();
     }
 }

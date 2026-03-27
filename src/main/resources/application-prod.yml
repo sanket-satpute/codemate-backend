@@ -1,8 +1,4 @@
 spring:
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
   data:
     mongodb:
       uri: ${MONGODB_URI}
@@ -18,6 +14,15 @@ file:
 frontend:
   origins: ${FRONTEND_ORIGINS:${FRONTEND_ORIGIN:https://codemate-five.vercel.app,https://codemate-git-main-ssatpute738-2203s-projects.vercel.app,https://codemate-78zgnunry-ssatpute738-2203s-projects.vercel.app}}
   origin-patterns: ${FRONTEND_ORIGIN_PATTERNS:https://codemate-*.vercel.app}
+
+app:
+  redis:
+    enabled: ${APP_REDIS_ENABLED:false}
+
+project:
+  id:
+    backfill:
+      enabled: ${PROJECT_ID_BACKFILL_ENABLED:false}
 
 logging:
   level:

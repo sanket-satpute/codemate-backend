@@ -1,8 +1,4 @@
 spring:
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
   main:
     web-application-type: reactive
   data:
@@ -24,6 +20,8 @@ api:
     key: test-groq-key
 
 app:
+  redis:
+    enabled: false
   repositories:
     enabled: false
 

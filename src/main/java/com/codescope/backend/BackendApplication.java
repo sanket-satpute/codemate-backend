@@ -4,7 +4,6 @@ import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfiguration;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration;
 import org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration;
@@ -15,7 +14,6 @@ import org.springframework.scheduling.annotation.EnableAsync;
 
 @SpringBootApplication(exclude = {
 		RedisRepositoriesAutoConfiguration.class,
-		JpaRepositoriesAutoConfiguration.class,
 		OpenAiAudioSpeechAutoConfiguration.class,
 		OpenAiAudioTranscriptionAutoConfiguration.class,
 		OpenAiChatAutoConfiguration.class,

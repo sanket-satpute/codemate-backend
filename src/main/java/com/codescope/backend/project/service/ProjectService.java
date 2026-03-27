@@ -268,10 +268,13 @@ public class ProjectService {
     }
 
     private Mono<Project> findOwnedProject(String projectId, String ownerId) {
-        return projectRepository.findByIdAndOwnerId(projectId, ownerId)
-                .switchIfEmpty(projectRepository.findByProjectId(projectId)
-                        .filter(project -> ownerId.equals(project.getOwnerId())))
+        return safeProjectLookup(projectRepository.findByProjectIdAndOwnerId(projectId, ownerId))
+                .switchIfEmpty(safeProjectLookup(projectRepository.findByIdAndOwnerId(projectId, ownerId)))
                 .switchIfEmpty(Mono.error(new ProjectNotFoundException("Project not found or unauthorized")));
+    }
+
+    private Mono<Project> safeProjectLookup(Mono<Project> lookup) {
+        return lookup != null ? lookup : Mono.empty();
     }
 
     private ProjectResponse mapToProjectResponse(Project project) {

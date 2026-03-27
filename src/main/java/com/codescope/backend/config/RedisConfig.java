@@ -2,6 +2,7 @@ package com.codescope.backend.config;
 
 import com.codescope.backend.analysisjob.model.AnalysisJob;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisPassword;
@@ -15,6 +16,7 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
+@ConditionalOnProperty(name = "app.redis.enabled", havingValue = "true", matchIfMissing = false)
 public class RedisConfig {
 
     @Bean

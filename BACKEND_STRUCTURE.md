@@ -6,11 +6,11 @@ This document outlines the standardized structure and conventions for the CodeSc
 
 The `src/main/java/com/codescope/backend` directory is organized into the following packages:
 
-*   `config/`: Contains configuration classes for Spring, Firebase, Security, Swagger, etc.
+*   `config/`: Contains configuration classes for Spring, Security, Swagger, WebSocket, etc.
 *   `controller/`: Houses REST controllers responsible for handling incoming HTTP requests and returning API responses.
 *   `service/`: Contains business logic and orchestrates operations between controllers and repositories.
-*   `repository/`: Defines interfaces for data access operations, extending Spring Data interfaces (e.g., `MongoRepository`).
-*   `model/`: Contains Plain Old Java Objects (POJOs) representing data entities stored in the database (e.g., MongoDB documents).
+*   `repository/`: Defines interfaces for data access operations, extending Spring Data reactive Mongo interfaces.
+*   `model/`: Contains Plain Old Java Objects (POJOs) representing MongoDB documents and related domain models.
 *   `dto/`: Data Transfer Objects. Contains classes used for transferring data between layers (e.g., request bodies, response objects).
     *   `dto/auth/`: DTOs related to authentication and user management.
     *   `dto/project/`: DTOs for project creation, retrieval, and updates.
@@ -72,4 +72,6 @@ The `src/main/java/com/codescope/backend` directory is organized into the follow
 *   **Security**: Implement JWT-based authentication and authorization using Spring Security.
 *   **Database**: MongoDB is used for persistent storage.
 *   **Cloud Storage**: Cloudinary is used for storing uploaded files.
-*   **Firebase**: Firebase is used for user authentication and potentially other services.
+*   **Project Identity**: Use public `projectId` for API-level lookups. Mongo `_id` fallback exists only for backward compatibility.
+*   **Primary API Surface**: Use `/api/projects/*` for project and file workflows. `/api/upload/*` remains as a legacy compatibility layer.
+*   **WebSocket**: Uses native WebFlux WebSocket on `/ws` with JWT in the query string (`?token=...`), not SockJS/STOMP.
